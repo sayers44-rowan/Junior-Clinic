@@ -1,0 +1,20 @@
+{
+    "sequences": {
+        "0": {
+            "speaker": "Radio",
+            "text": "Hey [NAME], it's time to wake up!"
+        },
+        "1": {
+            "speaker": "[NAME]",
+            "text": "I should head to the MIRROR/CLOSET and get dressed first"
+        },
+        "2": {
+            "speaker": "Radio",
+            "text": "Be sure to get your CAR KEYS before you head out!"
+        },
+        "3": {
+            "speaker": "[NAME]",
+            "text": "Now that I have my CAR KEYS, I can leave out the FRONT DOOR."
+        }
+    }
+}

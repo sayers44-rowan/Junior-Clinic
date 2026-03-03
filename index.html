@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PROJECT SPARC</title>
+    <link rel="stylesheet" href="/src/styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <!-- Main Menu -->
+    <div id="main-menu">
+        <div class="menu-content">
+            <div class="sparc-logo">
+                <span class="letter-s">S</span>
+                <span class="letter-p">P</span>
+                <span class="letter-a">A</span>
+                <span class="letter-r">R</span>
+                <span class="letter-c">C</span>
+            </div>
+            <button id="start-mission-btn" class="menu-btn">Start Game</button>
+        </div>
+    </div>
+
+    <!-- Name Entry -->
+    <div id="name-entry">
+        <div class="entry-content">
+            <h1>SPARC ADVENTURE</h1>
+            <input type="text" id="pilot-name-input" maxlength="15" autocomplete="off" placeholder="Enter Player Name">
+            <br>
+            <button id="confirm-name-btn" class="menu-btn" style="display:none;"></button>
+        </div>
+    </div>
+
+    <div id="app"></div>
+    <div id="fade-overlay"></div>
+    <div id="interaction-prompt"></div>
+    <div id="narrator-text"></div>
+    <div id="dialogue-box">
+        <div id="speaker-name"></div>
+        <div id="dialogue-text"></div>
+    </div>
+
+    <div id="task-panel">
+        <div class="header">TASKS</div>
+        <div id="objective-text">FIND OUT WHAT HAPPENED</div>
+        <div id="subtask-text">- Check the radio</div>
+    </div>
+
+    <div id="utility-panel">
+        <div class="icon-circle">⚙️</div>
+        <div class="icon-circle">💬</div>
+    </div>
+
+    <div id="outfit-panel"></div>
+
+    <!-- Alarm Overlay -->
+    <div id="alarm-display">LATE</div>
+
+    <!-- Movement HUD -->
+    <div id="movement-hud">
+        <div class="d-pad">
+            <div class="arrow up" id="dpad-up">▲</div>
+            <div class="arrow left" id="dpad-left">◀</div>
+            <div class="arrow down" id="dpad-down">▼</div>
+            <div class="arrow right" id="dpad-right">▶</div>
+        </div>
+    </div>
+
+    <div id="stage-label"></div>
+
+    <script type="module" src="/main.js"></script>
+</body>
+
+</html>
