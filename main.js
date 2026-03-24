@@ -23,9 +23,13 @@ class SparcGame {
 
     animate() {
         requestAnimationFrame(() => this.animate());
-        const delta = this.clock.getDelta();
-        if (this.gameManager) this.gameManager.update(delta);
-        this.renderer.render(this.scene, this.camera);
+        try {
+            const delta = this.clock.getDelta();
+            if (this.gameManager) this.gameManager.update(delta);
+            this.renderer.render(this.scene, this.camera);
+        } catch (e) {
+            console.error(e);
+        }
     }
 }
 new SparcGame();
