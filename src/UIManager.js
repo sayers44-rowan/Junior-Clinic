@@ -41,9 +41,9 @@ export class UIManager {
                     <div class="char-desc">Fearless explorer. Certified station pilot.</div>
                     <div class="char-badge">✓ UNLOCKED</div>
                 </div>
-                <div class="char-card" id="char-aj" data-char="aj" data-model="/assets/models/pilot_aj.fbx">
-                    <div class="char-avatar">👾</div>
-                    <div class="char-name">AGENT AJ</div>
+                <div class="char-card" id="char-dummy" data-char="dummy" data-model="/assets/models/pilot_dummy.fbx">
+                    <div class="char-avatar">🤖</div>
+                    <div class="char-name">TEST DUMMY</div>
                     <div class="char-desc">Tactical specialist. Enhanced reflexes.</div>
                     <div class="char-badge">✓ UNLOCKED</div>
                 </div>
@@ -74,7 +74,7 @@ export class UIManager {
             <div class="screen-header" style="margin-top:0;">CHANGE PILOT</div>
             <div class="char-grid" id="ingame-char-grid">
                 <div class="char-card selected" data-model="/assets/models/pilot_timmy.fbx"><div class="char-avatar">🧑‍🚀</div><div class="char-name">PILOT TIMMY</div></div>
-                <div class="char-card" data-model="/assets/models/pilot_aj.fbx"><div class="char-avatar">👾</div><div class="char-name">AGENT AJ</div></div>
+                <div class="char-card" data-model="/assets/models/pilot_dummy.fbx"><div class="char-avatar">🤖</div><div class="char-name">TEST DUMMY</div></div>
                 <div class="char-card" data-model="/assets/models/pilot_ami.fbx"><div class="char-avatar">🌟</div><div class="char-name">PILOT AMI</div></div>
                 <div class="char-card" data-model="/assets/models/pilot_jackie.fbx"><div class="char-avatar">⚡</div><div class="char-name">PILOT JACKIE</div></div>
                 <div class="char-card" data-model="/assets/models/pilot_michelle.fbx"><div class="char-avatar">🛡️</div><div class="char-name">PILOT MICHELLE</div></div>
@@ -518,15 +518,15 @@ export class UIManager {
         document.getElementById('launch-btn').addEventListener('click', () => {
             const name = document.getElementById('player-name-input').value.trim();
             this.playerName = name || 'CADET';
-            
+
             const overlay = document.getElementById('fade-overlay');
             overlay.style.transition = 'opacity 0.8s ease';
             overlay.style.opacity = '1';
-            
+
             setTimeout(() => {
                 this._hideScreen('name-input');
                 this.onGameStart(this.playerName, this.selectedChar, this.selectedModel);
-                
+
                 // MISSION HUB
                 const hub = document.getElementById('mission-hub');
                 const callsignEl = document.getElementById('hub-callsign');
@@ -534,7 +534,7 @@ export class UIManager {
                 if (hub) { hub.style.display = 'flex'; hub.classList.add('screen-fade-in'); }
                 const objEl = document.getElementById('hub-objective');
                 if (objEl) objEl.style.visibility = 'hidden';
-                
+
                 setTimeout(() => {
                     overlay.style.transition = 'opacity 3.0s ease';
                     overlay.style.opacity = '0';
@@ -607,8 +607,8 @@ export class UIManager {
         setTimeout(() => {
             const from = document.getElementById(fromId);
             const to = document.getElementById(toId);
-            if(from) from.style.display = 'none';
-            if(to) to.style.display = 'flex';
+            if (from) from.style.display = 'none';
+            if (to) to.style.display = 'flex';
             overlay.style.opacity = '0';
         }, 400);
     }
@@ -685,10 +685,10 @@ export class UIManager {
     }
 
     _advanceDialogue() {
-        const box     = document.getElementById('dialogue-box');
+        const box = document.getElementById('dialogue-box');
         const overlay = document.getElementById('dialogue-overlay');
-        const spkEl   = document.getElementById('dlg-speaker');
-        const txtEl   = document.getElementById('dlg-text');
+        const spkEl = document.getElementById('dlg-speaker');
+        const txtEl = document.getElementById('dlg-text');
         if (!box) return;
 
         if (!this._dlgQueue || this._dlgQueue.length === 0) {

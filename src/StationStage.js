@@ -7,7 +7,7 @@ import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 
 // ASSET PREP: shared loaders
 export const globalManager = new THREE.LoadingManager();
-const _texLoader  = new THREE.TextureLoader(globalManager);
+const _texLoader = new THREE.TextureLoader(globalManager);
 const _gltfLoader = new GLTFLoader(globalManager);
 
 
@@ -43,9 +43,9 @@ export class StationStage {
         this.isJumping = false;
 
         // Game-state flags
-        this.hasKeys          = false;   // KEY SYSTEM: must pick up key before vehicle
+        this.hasKeys = false;   // KEY SYSTEM: must pick up key before vehicle
         this.isCutsceneActive = false;   // CUTSCENE: locks movement during intro pan
-        this._charTintIndex   = 0;       // CLOSET: cycles colour tints
+        this._charTintIndex = 0;       // CLOSET: cycles colour tints
 
         this.init();
     }
@@ -67,8 +67,8 @@ export class StationStage {
         this.camera.position.set(-5, 3, -5);
         this.camera.lookAt(0, 1.5, 0);
         this._cameraLinked = false;
-        setTimeout(() => { 
-            this._cameraLinked = true; 
+        setTimeout(() => {
+            this._cameraLinked = true;
             if (!this.controls) this.controls = {};
             this.controls.enabled = true; // INPUT FORCED-ON: unlocked immediately after load
         }, 100);
@@ -77,12 +77,13 @@ export class StationStage {
         this.setupEnvironment(); // room + vehicle
         this.setupProps();       // bed, clock, radio, closet, key
         this.setupInput();
+        this._preloadBaseAnims(); // Eagerly cache shared animation FBXes
         // NOTE: loadPilot() is NOT called here — it is called by GameStateManager._launchGame()
         // with the user's actual selected model path. Calling it here would race against that.
 
         // Far-plane: exterior city visible up to 600 units
         this.camera.near = 0.1;
-        this.camera.far  = 600;
+        this.camera.far = 600;
         this.camera.updateProjectionMatrix();
 
         // INTRO CUTSCENE: focus on alarm clock, then pan to player
@@ -164,10 +165,10 @@ export class StationStage {
 
         const eTrim1 = new THREE.Mesh(new THREE.BoxGeometry(0.22, 2.5, 0.05), thinTrimMat);
         eTrim1.position.set(6.1, 1.25, -0.975); this.scene.add(eTrim1);
-        
+
         const eTrim2 = new THREE.Mesh(new THREE.BoxGeometry(0.22, 2.5, 0.05), thinTrimMat);
         eTrim2.position.set(6.1, 1.25, 0.975); this.scene.add(eTrim2);
-        
+
         const eTrimTop = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.05, 2.0), thinTrimMat);
         eTrimTop.position.set(6.1, 2.5, 0); this.scene.add(eTrimTop);
 
@@ -180,7 +181,7 @@ export class StationStage {
         mainDoor.position.set(6.1, 1.25, 0); roomGroup.add(mainDoor);
 
         // HIGH-TECH APARTMENT: Subtle Status Light above East Exit
-        const exitStatusMat = new THREE.MeshStandardMaterial({ 
+        const exitStatusMat = new THREE.MeshStandardMaterial({
             color: 0x00ffff, emissive: 0x00ffff, emissiveIntensity: 1.5, roughness: 0.2
         });
         const exitSign = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.05, 0.5), exitStatusMat);
@@ -209,10 +210,10 @@ export class StationStage {
         // BEDROOM DOOR: ThinTrim & Upper Wall
         const bTrim1 = new THREE.Mesh(new THREE.BoxGeometry(0.22, 2.5, 0.05), thinTrimMat);
         bTrim1.position.set(-6.1, 1.25, 2.025); this.scene.add(bTrim1);
-        
+
         const bTrim2 = new THREE.Mesh(new THREE.BoxGeometry(0.22, 2.5, 0.05), thinTrimMat);
         bTrim2.position.set(-6.1, 1.25, 3.975); this.scene.add(bTrim2);
-        
+
         const bTrimTop = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.05, 2.0), thinTrimMat);
         bTrimTop.position.set(-6.1, 2.5, 3.0); this.scene.add(bTrimTop);
 
@@ -261,8 +262,8 @@ export class StationStage {
         this._buildCity();
 
         // CYAN ACCENT lights (interior corners)
-        [ [ 4.5, 4.5,  4.5], [-4.5, 4.5,  4.5],
-          [ 4.5, 4.5, -4.5], [-4.5, 4.5, -4.5] ].forEach(pos => {
+        [[4.5, 4.5, 4.5], [-4.5, 4.5, 4.5],
+        [4.5, 4.5, -4.5], [-4.5, 4.5, -4.5]].forEach(pos => {
             const light = new THREE.PointLight(0x00f2ff, 1.0, 15);
             light.position.set(...pos); this.scene.add(light);
         });
@@ -278,12 +279,12 @@ export class StationStage {
             sky.scale.setScalar(450);
             this.scene.add(sky);
             const skyUniforms = sky.material.uniforms;
-            skyUniforms['turbidity'].value    = 4;
-            skyUniforms['rayleigh'].value     = 1.5;
-            skyUniforms['mieCoefficient'].value    = 0.005;
-            skyUniforms['mieDirectionalG'].value   = 0.8;
+            skyUniforms['turbidity'].value = 4;
+            skyUniforms['rayleigh'].value = 1.5;
+            skyUniforms['mieCoefficient'].value = 0.005;
+            skyUniforms['mieDirectionalG'].value = 0.8;
             const sun = new THREE.Vector3();
-            const phi   = THREE.MathUtils.degToRad(85);   // near horizon
+            const phi = THREE.MathUtils.degToRad(85);   // near horizon
             const theta = THREE.MathUtils.degToRad(160);
             sun.setFromSphericalCoords(1, phi, theta);
             skyUniforms['sunPosition'].value.copy(sun);
@@ -291,7 +292,7 @@ export class StationStage {
             const pmrem = new THREE.PMREMGenerator(this.renderer);
             pmrem.compileEquirectangularShader();
             this.scene.environment = pmrem.fromScene(new THREE.RoomEnvironment()).texture;
-        } catch(e) {
+        } catch (e) {
             // Fallback if Sky fails
             this.scene.background = new THREE.Color(0x87ceeb);
             console.warn('THREE.Sky unavailable — using flat sky colour', e);
@@ -326,18 +327,18 @@ export class StationStage {
 
         // SUPPORTING CITY BUILDINGS
         [
-            { p: [ 20, 0, -110], s: [ 8, 25,  8], c: 0x8899aa },
-            { p: [-18, 0, -115], s: [ 7, 20,  7], c: 0x99aaaa },
-            { p: [ 30, 0, -140], s: [10, 35, 10], c: 0x778899 },
-            { p: [-35, 0, -145], s: [ 8, 28,  8], c: 0xaabbcc },
-            { p: [ 10, 0, -180], s: [12, 45, 12], c: 0x667788 },
-            { p: [  0, 0,  -90], s: [ 6, 22,  6], c: 0x8899bb },
-            { p: [-10, 0,  -95], s: [ 5, 30,  5], c: 0x99aabb },
-            { p: [ 15, 0, -125], s: [ 9, 38,  9], c: 0x6677aa },
-            { p: [-42, 0, -110], s: [ 7, 20,  7], c: 0xaab9c8 },
-            { p: [ 40, 0, -130], s: [11, 42, 11], c: 0x778aaa },
-            { p: [ -5, 0, -165], s: [ 8, 33,  8], c: 0x9aabbc },
-            { p: [ 22, 0, -170], s: [ 6, 24,  6], c: 0x667799 },
+            { p: [20, 0, -110], s: [8, 25, 8], c: 0x8899aa },
+            { p: [-18, 0, -115], s: [7, 20, 7], c: 0x99aaaa },
+            { p: [30, 0, -140], s: [10, 35, 10], c: 0x778899 },
+            { p: [-35, 0, -145], s: [8, 28, 8], c: 0xaabbcc },
+            { p: [10, 0, -180], s: [12, 45, 12], c: 0x667788 },
+            { p: [0, 0, -90], s: [6, 22, 6], c: 0x8899bb },
+            { p: [-10, 0, -95], s: [5, 30, 5], c: 0x99aabb },
+            { p: [15, 0, -125], s: [9, 38, 9], c: 0x6677aa },
+            { p: [-42, 0, -110], s: [7, 20, 7], c: 0xaab9c8 },
+            { p: [40, 0, -130], s: [11, 42, 11], c: 0x778aaa },
+            { p: [-5, 0, -165], s: [8, 33, 8], c: 0x9aabbc },
+            { p: [22, 0, -170], s: [6, 24, 6], c: 0x667799 },
             { p: [-30, 0, -190], s: [10, 40, 10], c: 0x8899aa }
         ].forEach(b => {
             const bld = new THREE.Mesh(
@@ -350,7 +351,7 @@ export class StationStage {
 
         // 3-LAYER TREES: thick trunk + 3 stacked cones for natural silhouette
         [
-            { p: [6,  0, -80] }, { p: [6,  0, -95] },
+            { p: [6, 0, -80] }, { p: [6, 0, -95] },
             { p: [14, 0, -80] }, { p: [14, 0, -95] },
             { p: [-6, 0, -92] }, { p: [-14, 0, -85] }
         ].forEach(t => {
@@ -359,7 +360,7 @@ export class StationStage {
             trunk.position.set(t.p[0], 1.5, t.p[2]);
             this.scene.add(trunk);
             // 3 stacked leaf cones — bottom wide, top narrow, alternating green shades
-            [[4.5, 5, 3,   0x2d8a30], [3.5, 4.5, 5.5, 0x3a9e3a], [2.5, 4, 8, 0x22762a]].forEach(([r, h, y, c]) => {
+            [[4.5, 5, 3, 0x2d8a30], [3.5, 4.5, 5.5, 0x3a9e3a], [2.5, 4, 8, 0x22762a]].forEach(([r, h, y, c]) => {
                 const cone = new THREE.Mesh(new THREE.ConeGeometry(r, h, 8),
                     new THREE.MeshStandardMaterial({ color: c, roughness: 0.85 }));
                 cone.position.set(t.p[0], y, t.p[2]);
@@ -625,7 +626,7 @@ export class StationStage {
 
         // Phase 2: after 2s, LERP camera back toward player over 1s
         const lerpDuration = 1200; // ms
-        const holdDuration  = 2000; // ms
+        const holdDuration = 2000; // ms
         const startTime = Date.now() + holdDuration;
 
         // Target: normal player-camera position
@@ -775,36 +776,34 @@ export class StationStage {
         this.isPaused = val;
         const overlay = document.getElementById('pause-overlay');
         if (overlay) overlay.style.display = this.isPaused ? 'flex' : 'none';
-        
+
         // HARD PAUSE: Freeze animations natively without breaking render loop
         if (this.mixer) {
             this.mixer.timeScale = this.isPaused ? 0 : 1;
         }
-        
+
         if (!this.isPaused) this.clock.getDelta();
     }
 
-    // CLEAN SWAP PROTOCOL: dispose old model, reset mixer, load fresh rig
+    // FRESH LOAD PROTOCOL: always loads a new FBX instance — no clone, no cache for pilots
     async loadPilot(modelPath) {
-        // Default to timmy if no path given
         const path = modelPath || '/assets/models/pilot_timmy.fbx';
-        
-        // STUTTER FIX: Redundant load guard
+
+        // STUTTER FIX: guard against redundant swap to the same model
         if (this._currentModelPath === path && this.pilot) {
             console.log('REDUNDANT LOAD BLOCKED:', path);
-            return Promise.resolve(this.pilot);
+            return this.pilot;
         }
-        
         this._currentModelPath = path;
 
-        // --- DISPOSAL: Purge old pilot from GPU to prevent VRAM leak ---
+        // --- DISPOSAL: remove old pilot from scene ---
         if (this.pilot) {
             this.playerContainer.remove(this.pilot);
             this.pilot = null;
             this.playerModel = null;
         }
 
-        // --- MIXER RESET: Nullify old mixer so actions don't bleed ---
+        // --- MIXER RESET ---
         if (this.mixer) {
             this.mixer.stopAllAction();
             this.mixer = null;
@@ -814,321 +813,326 @@ export class StationStage {
         this.floatAction = null;
         this.jumpAction = null;
 
-        return new Promise((resolve) => {
-            if (this.assetCache[path]) {
-                console.log('CACHE ACTIVE: Clone ' + path);
-                const cloneFbx = SkeletonUtils.clone(this.assetCache[path]);
-                this._setupRig(cloneFbx, path).then(resolve);
-                return;
-            }
+        // Block until shared anim FBXes are ready
+        if (this._animsReady) await this._animsReady;
 
+        // Always fresh-load the pilot — never clone, never cache
+        return new Promise((resolve, reject) => {
             const loader = new FBXLoader(globalManager);
             loader.load(path, (fbx) => {
-                this.assetCache[path] = fbx; // store original
-                const cloneFbx = SkeletonUtils.clone(fbx); // work on clone
-                this._setupRig(cloneFbx, path).then(resolve);
+                this._setupRig(fbx, path).then(resolve).catch(reject);
             }, undefined, (err) => {
-                console.error('FBX Missing:', err);
-                resolve(null);
+                console.error('Pilot FBX load failed:', err);
+                reject(err);
             });
         });
     }
 
-    async _setupRig(fbx, path) {
-        return new Promise((resolve) => {
-                // SCALE & ORIENTATION
-                fbx.scale.set(0.009, 0.009, 0.009);
-                fbx.position.set(0, 0, 0);
-                fbx.rotation.set(0, 0, 0);
-                fbx.name = 'pilotGroup';
-
-                // TRANSPARENCY & SKINNED MESH FIX (Jackie/AJ)
-                fbx.traverse((child) => {
-                    if (child.isMesh && child.material) {
-                        if (Array.isArray(child.material)) {
-                            child.material.forEach(m => { m.transparent = false; m.opacity = 1.0; });
-                        } else {
-                            child.material.transparent = false;
-                            child.material.opacity = 1.0;
-                        }
-                    }
-                    if (child.isSkinnedMesh && path.includes('aj')) {
-                        child.bindMode = 'attached';
-                        child.normalizeSkinWeights();
-                    }
+    // Cache shared animation FBXes once at init. 'jump' and 'float' both use Floating.fbx.
+    _preloadBaseAnims() {
+        this.animCache = this.animCache || {};
+        const anims = [
+            { key: 'run', path: '/assets/models/Running.fbx' },
+            { key: 'float', path: '/assets/models/Floating.fbx' },
+        ];
+        this._animsReady = Promise.all(anims.map(({ key, path }) => {
+            if (this.animCache[key]) return Promise.resolve();
+            return new Promise((resolve) => {
+                const loader = new FBXLoader(globalManager);
+                loader.load(path, (fbx) => {
+                    this.animCache[key] = fbx;
+                    // 'jump' shares the same FBX as 'float'
+                    if (key === 'float') this.animCache['jump'] = fbx;
+                    console.log('ANIM CACHE READY:', key);
+                    resolve();
+                }, undefined, (err) => {
+                    console.warn('ANIM PRELOAD FAILED:', key, err);
+                    resolve();
                 });
+            });
+        }));
+        return this._animsReady;
+    }
 
-                this.pilot = fbx;
-                this.playerModel = fbx;
-                this.playerContainer.add(fbx);
-                console.log('CHARACTER ATTACHED:', path);
+    // Fresh FBX instance from disk — no cloning, no rebinding needed
+    async _setupRig(fbx, path) {
+        // SCALE & ORIENTATION
+        fbx.scale.set(0.009, 0.009, 0.009);
+        fbx.position.set(0, 0, 0);
+        fbx.rotation.set(0, 0, 0);
+        fbx.name = 'pilotGroup';
 
-                const verifyRetarget = (clip, name) => {
-                    if (clip.tracks.length === 0) console.warn(`RETARGET FAILED: ${name} tracks empty on ${path}`);
-                    return clip;
-                };
-
-                if (fbx.animations && fbx.animations.length > 0) {
-                    // FRESH MIXER: bound to the NEW model
-                    this.mixer = new THREE.AnimationMixer(fbx);
-
-                    // IDLE: embedded in the model file itself
-                    this.idleAction = this.mixer.clipAction(fbx.animations[0]);
-                    this.idleAction.setEffectiveWeight(1.0);
-                    this.idleAction.setEffectiveTimeScale(1.0);
-                    this.idleAction.play();
-                    this.isRunning = false;
-
-                    // RUNNING: shared external file, with formal retargeting
-                    const runLoader = new FBXLoader(globalManager);
-                    runLoader.load('/assets/models/Running.fbx', (runFbx) => {
-                        if (runFbx.animations && runFbx.animations.length > 0) {
-                            const retargetedRun = verifyRetarget(SkeletonUtils.retargetClip(fbx, runFbx, runFbx.animations[0]), 'Running');
-                            this.runAction = this.mixer.clipAction(retargetedRun);
-                            this.runAction.enabled = true;
-                            this.runAction.setEffectiveWeight(0);
-                            this.runAction.setEffectiveTimeScale(1.0);
-                            this.runAction.play();
-                            console.log('RUNNING RETARGETED TO NEW RIG');
-                        }
-
-                        // JUMPING: shared external file, with formal retargeting
-                        const jumpLoader = new FBXLoader(globalManager);
-                        jumpLoader.load('/assets/models/Jump.fbx', (jumpFbx) => {
-                            if (jumpFbx.animations && jumpFbx.animations.length > 0) {
-                                const retargetedJump = verifyRetarget(SkeletonUtils.retargetClip(fbx, jumpFbx, jumpFbx.animations[0]), 'Jump');
-                                this.jumpAction = this.mixer.clipAction(retargetedJump);
-                                this.jumpAction.enabled = true;
-                                this.jumpAction.setEffectiveWeight(0);
-                                this.jumpAction.setEffectiveTimeScale(1.1); // Slightly faster jump
-                                this.jumpAction.play();
-                                console.log('JUMPS RETARGETED TO NEW RIG');
-                            }
-
-                            // FLOATING: shared external file, with formal retargeting
-                            const floatLoader = new FBXLoader(globalManager);
-                            floatLoader.load('/assets/models/Floating.fbx', (floatFbx) => {
-                                if (floatFbx.animations && floatFbx.animations.length > 0) {
-                                    const retargetedFloat = verifyRetarget(SkeletonUtils.retargetClip(fbx, floatFbx, floatFbx.animations[0]), 'Floating');
-                                    this.floatAction = this.mixer.clipAction(retargetedFloat);
-                                    this.floatAction.enabled = true;
-                                    this.floatAction.setEffectiveWeight(0);
-                                    this.floatAction.setEffectiveTimeScale(1.0);
-                                    this.floatAction.play();
-                                    console.log('FLOAT RETARGETED TO NEW RIG');
-                                }
-                                console.log('MODULAR CHARACTER SYSTEM INITIALIZED');
-                                resolve(fbx);
-                            }, undefined, (err) => {
-                                console.warn('Floating.fbx not found:', err);
-                                resolve(fbx);
-                            });
-                        }, undefined, (err) => {
-                            console.warn('Jump.fbx not found:', err);
-                            resolve(fbx);
-                        });
-                    }, undefined, (err) => {
-                        console.error('RUNNING.FBX MISSING:', err);
-                        resolve(fbx);
-                    });
+        // TRANSPARENCY & SKINNED MESH FIX
+        fbx.traverse((child) => {
+            if (child.isMesh && child.material) {
+                if (Array.isArray(child.material)) {
+                    child.material.forEach(m => { m.transparent = false; m.opacity = 1.0; });
                 } else {
-                    // No embedded animations — still resolve
-                    this.mixer = new THREE.AnimationMixer(fbx);
-                    resolve(fbx);
+                    child.material.transparent = false;
+                    child.material.opacity = 1.0;
                 }
+            }
+            if (child.isSkinnedMesh && path.includes('dummy')) {
+                child.normalizeSkinWeights();
+            }
         });
+
+        // Attach to scene — playerModel must be set for rotation in updateAnimation
+        this.pilot = fbx;
+        this.playerModel = fbx;
+        this.playerContainer.add(fbx);
+        console.log('CHARACTER ATTACHED:', path);
+
+        if (fbx.animations && fbx.animations.length > 0) {
+            this.mixer = new THREE.AnimationMixer(fbx);
+            this.isRunning = false;
+            this._animState = 0;
+
+            // IDLE: embedded in the model
+            this.idleAction = this.mixer.clipAction(fbx.animations[0]);
+            this.idleAction.setEffectiveWeight(1.0);
+            this.idleAction.setEffectiveTimeScale(1.0);
+            this.idleAction.play();
+
+            // Force matrix update so retargetClip sees valid bone world matrices
+            fbx.updateMatrixWorld(true);
+
+            // SHARED ANIMS: retarget from pre-cached FBXes onto fresh fbx
+            const verifyRetarget = (clip, name) => {
+                if (clip.tracks.length === 0) console.warn(`RETARGET FAILED: ${name} — 0 tracks`);
+                else console.log(`RETARGET OK: ${name} (${clip.tracks.length} tracks)`);
+                return clip;
+            };
+
+            const bindAnim = (key, timeScale) => {
+                // JUMP FALLBACK: alias to float if jump key is somehow missing
+                const src = this.animCache && (this.animCache[key] || (key === 'jump' ? this.animCache['float'] : null));
+                if (src && src.animations && src.animations.length > 0) {
+                    try {
+                        // Bone names already match perfectly (mixamorig6Hips -> mixamorig6Hips).
+                        // Animation FBXes have no SkinnedMesh so retargetClip() would crash.
+                        // Three.js AnimationMixer matches tracks to bones by name automatically.
+                        const clip = src.animations[0];
+                        const action = this.mixer.clipAction(clip);
+                        action.enabled = true;
+                        action.setEffectiveWeight(0);
+                        action.setEffectiveTimeScale(timeScale);
+                        action.play();
+                        console.log(`ANIM BOUND: ${key} (${clip.tracks.length} tracks)`);
+                        return action;
+                    } catch (e) {
+                        console.error(`ANIM BIND ERROR on ${key}:`, e);
+                        return null;
+                    }
+                }
+                console.warn(`ANIM CACHE MISS: ${key}`);
+                return null;
+            };
+
+            this.runAction = bindAnim('run', 1.0);
+            this.jumpAction = bindAnim('jump', 1.1);
+            this.floatAction = bindAnim('float', 1.0);
+
+            console.log('MODULAR RIG INITIALIZED — FRESH LOAD');
+        } else {
+            this.mixer = new THREE.AnimationMixer(fbx);
+        }
     }
 
     update(dt) {
         try {
-        // PULSE RESTORED: Continuous render unconditionally active. Removed pause checks.
-        const actualDt = dt || this.clock.getDelta();
+            // PULSE RESTORED: Continuous render unconditionally active. Removed pause checks.
+            const actualDt = dt || this.clock.getDelta();
 
-        // DEEP PHYSICS SYNC: Raycast Grounding
-        if (this.roomGroup && this.roomGroup.children && this.roomGroup.children.length > 0 && this.playerContainer) {
-            const rayOrigin = this.playerContainer.position.clone();
-            rayOrigin.y += 0.5; // Shoot from slightly above feet
-            
-            // Only raycast downwards if we are falling or resting
-            if (this.velocityY <= 0.01) {
-                const raycaster = new THREE.Raycaster(rayOrigin, new THREE.Vector3(0, -1, 0), 0, 0.6); // 0.5 origin + 0.1 tolerance
-                const hits = raycaster.intersectObject(this.roomGroup, true);
-                
-                if (hits.length > 0) { // Valid floor hit
-                    this.playerContainer.position.y = hits[0].point.y;
-                    this.velocityY = 0;
-                    
-                    if (!this.isOnGround) {
-                        this.isOnGround = true;
-                        this.isJumping = false;
-                        this.isRunning = false;
-                        
-                        // LANDING HOOK: Structural hard-stop, no fade.
-                        if (this.jumpAction) this.jumpAction.stop();
-                        if (this.floatAction) this.floatAction.stop();
-                        if (this.idleAction) {
-                            this.idleAction.play();
-                            this.idleAction.setEffectiveWeight(1.0);
+            // DEEP PHYSICS SYNC: Raycast Grounding
+            if (this.roomGroup && this.roomGroup.children && this.roomGroup.children.length > 0 && this.playerContainer) {
+                const rayOrigin = this.playerContainer.position.clone();
+                rayOrigin.y += 0.5; // Shoot from slightly above feet
+
+                // Only raycast downwards if we are falling or resting
+                if (this.velocityY <= 0.01) {
+                    const raycaster = new THREE.Raycaster(rayOrigin, new THREE.Vector3(0, -1, 0), 0, 0.6); // 0.5 origin + 0.1 tolerance
+                    const hits = raycaster.intersectObject(this.roomGroup, true);
+
+                    if (hits.length > 0) { // Valid floor hit
+                        this.playerContainer.position.y = hits[0].point.y;
+                        this.velocityY = 0;
+
+                        if (!this.isOnGround) {
+                            this.isOnGround = true;
+                            this.isJumping = false;
+                            this.isRunning = false;
+
+                            // LANDING HOOK: Structural hard-stop, no fade.
+                            if (this.jumpAction) this.jumpAction.stop();
+                            if (this.floatAction) this.floatAction.stop();
+                            if (this.idleAction) {
+                                this.idleAction.play();
+                                this.idleAction.setEffectiveWeight(1.0);
+                            }
                         }
+                    } else {
+                        this.isOnGround = false; // Player walked off an edge
                     }
-                } else {
-                    this.isOnGround = false; // Player walked off an edge
                 }
             }
-        }
 
-        if (this.scanPlane) {
-            // Animate scanning line from y=0 to y=1.8 continuously
-            this.scanPlane.position.y = (Math.sin(actualDt * Date.now() * 0.003) * 0.9) + 0.9;
-        }
-
-        // SAFETY LIMITERS & HEARTBEATS
-        if (!this.playerContainer || !this.mixer) return;
-        this.handleMovement(actualDt);
-
-        // CONTAINMENT UNIT interaction
-        // BIO-UNIT interaction
-        if (this.containmentUnit) {
-            const dist = this.playerContainer.position.distanceTo(this.containmentUnit.position);
-            const isNear = dist < 3;
-            if (this.containmentPrompt) {
-                this.containmentPrompt.visible = isNear;
-                this.containmentPrompt.lookAt(this.camera.position);
+            if (this.scanPlane) {
+                // Animate scanning line from y=0 to y=1.8 continuously
+                this.scanPlane.position.y = (Math.sin(actualDt * Date.now() * 0.003) * 0.9) + 0.9;
             }
-            if (isNear && this.input.interact && !this.scanComplete) {
-                this.scanComplete = true;
-                this.input.interact = false;
-                
-                // SCAN PROMPT KILL: Remove from scene entirely
+
+            // SAFETY LIMITERS & HEARTBEATS
+            if (!this.playerContainer || !this.mixer) return;
+            this.handleMovement(actualDt);
+
+            // CONTAINMENT UNIT interaction
+            // BIO-UNIT interaction
+            if (this.containmentUnit) {
+                const dist = this.playerContainer.position.distanceTo(this.containmentUnit.position);
+                const isNear = dist < 3;
                 if (this.containmentPrompt) {
-                    this.scene.remove(this.containmentPrompt);
-                    this.containmentPrompt = null;
+                    this.containmentPrompt.visible = isNear;
+                    this.containmentPrompt.lookAt(this.camera.position);
                 }
-                
-                if (this.alertSprites) this.alertSprites.forEach(s => s.visible = true);
-                if (this._uiManager) {
-                    this._uiManager.queueDialogue([
-                        { speaker: 'Specialist', text: "This doesn't look good... Patient 21 is deteriorating. I need my keys.", isRadio: false },
-                        { speaker: 'Lead Researcher', text: 'Vitals are dropping. Get to your vehicle and head to the launch site NOW!', isRadio: true }
-                    ]);
-                }
-                const objEl = document.getElementById('hub-objective');
-                if (objEl) objEl.textContent = 'OBJECTIVE: GET KEYS & ENTER VEHICLE';
-                console.log('SCAN COMPLETE — PATIENT 21');
-            }
-        }
+                if (isNear && this.input.interact && !this.scanComplete) {
+                    this.scanComplete = true;
+                    this.input.interact = false;
 
-        // VEHICLE interaction (KEY REQUIRED)
-        if (this.vehicleGroup && !this.vehicleEntered) {
-            const dist = this.playerContainer.position.distanceTo(this.vehicleGroup.position);
-            const isNear = dist < 2.5;
-            if (this.vehiclePrompt) {
-                this.vehiclePrompt.visible = isNear;
-                if (isNear) this.vehiclePrompt.lookAt(this.camera.position);
-            }
-            if (isNear && this.input.interact) {
-                this.input.interact = false;
-                if (!this.hasKeys) {
-                    // No keys yet — block entry
+                    // SCAN PROMPT KILL: Remove from scene entirely
+                    if (this.containmentPrompt) {
+                        this.scene.remove(this.containmentPrompt);
+                        this.containmentPrompt = null;
+                    }
+
+                    if (this.alertSprites) this.alertSprites.forEach(s => s.visible = true);
                     if (this._uiManager) {
                         this._uiManager.queueDialogue([
-                            { speaker: 'Specialist', text: "I need my keys first! Check the radio table.", isRadio: false }
+                            { speaker: 'Specialist', text: "This doesn't look good... Patient 21 is deteriorating. I need my keys.", isRadio: false },
+                            { speaker: 'Lead Researcher', text: 'Vitals are dropping. Get to your vehicle and head to the launch site NOW!', isRadio: true }
                         ]);
                     }
-                } else {
-                    this.vehicleEntered = true;
-                    this._triggerVehicleEntry();
+                    const objEl = document.getElementById('hub-objective');
+                    if (objEl) objEl.textContent = 'OBJECTIVE: GET KEYS & ENTER VEHICLE';
+                    console.log('SCAN COMPLETE — PATIENT 21');
                 }
             }
-        }
 
-        // KEY PICK-UP
-        if (this.keyMesh && !this.hasKeys) {
-            const dist = this.playerContainer.position.distanceTo(this.keyMesh.position);
-            if (dist < 1.8 && this.input.interact) {
-                this.input.interact = false;
-                this.hasKeys = true;
-                this.scene.remove(this.keyMesh);
-                this.keyMesh = null;
-                if (this._uiManager) {
-                    this._uiManager.queueDialogue([
-                        { speaker: 'Specialist', text: "Got my keys. Time to go!", isRadio: false }
-                    ]);
+            // VEHICLE interaction (KEY REQUIRED)
+            if (this.vehicleGroup && !this.vehicleEntered) {
+                const dist = this.playerContainer.position.distanceTo(this.vehicleGroup.position);
+                const isNear = dist < 2.5;
+                if (this.vehiclePrompt) {
+                    this.vehiclePrompt.visible = isNear;
+                    if (isNear) this.vehiclePrompt.lookAt(this.camera.position);
                 }
-                const objEl = document.getElementById('hub-objective');
-                if (objEl) objEl.textContent = 'OBJECTIVE: ENTER VEHICLE';
-                console.log('KEY ACQUIRED');
+                if (isNear && this.input.interact) {
+                    this.input.interact = false;
+                    if (!this.hasKeys) {
+                        // No keys yet — block entry
+                        if (this._uiManager) {
+                            this._uiManager.queueDialogue([
+                                { speaker: 'Specialist', text: "I need my keys first! Check the radio table.", isRadio: false }
+                            ]);
+                        }
+                    } else {
+                        this.vehicleEntered = true;
+                        this._triggerVehicleEntry();
+                    }
+                }
             }
-        }
 
-        // CLOSET INTERACTION — open Character Select UI
-        if (this.closetPos && this.closetPrompt) {
-            const dist = this.playerContainer.position.distanceTo(this.closetPos);
-            const isNear = dist < 1.5;
-            this.closetPrompt.visible = isNear;
-            if (isNear) this.closetPrompt.lookAt(this.camera.position);
-
-            if (isNear && this.input.interact && !this._closetOpen) {
-                this.input.interact = false;
-                this._closetOpen = true;
-
-                // Freeze movement & animations (NOT full isPaused — we still render)
-                this._closetFrozen = true;
-                if (this.mixer) this.mixer.timeScale = 0;
-
-                // Save camera position so we can restore it on close
-                this._closetCamPos = this.camera.position.clone();
-
-                // Focus camera on player
-                const pPos = this.playerContainer.position;
-                this.camera.position.set(pPos.x + 2, pPos.y + 1.8, pPos.z + 3);
-                this.camera.lookAt(pPos.x, pPos.y + 1.0, pPos.z);
-
-                // Unlock mouse pointer so user can click UI
-                document.exitPointerLock();
-
-                // OPEN the in-game character select overlay
-                if (typeof window.openCharacterSelect === 'function') {
-                    window.openCharacterSelect(this._currentModelPath || '/assets/models/pilot_timmy.fbx');
+            // KEY PICK-UP
+            if (this.keyMesh && !this.hasKeys) {
+                const dist = this.playerContainer.position.distanceTo(this.keyMesh.position);
+                if (dist < 1.8 && this.input.interact) {
+                    this.input.interact = false;
+                    this.hasKeys = true;
+                    this.scene.remove(this.keyMesh);
+                    this.keyMesh = null;
+                    if (this._uiManager) {
+                        this._uiManager.queueDialogue([
+                            { speaker: 'Specialist', text: "Got my keys. Time to go!", isRadio: false }
+                        ]);
+                    }
+                    const objEl = document.getElementById('hub-objective');
+                    if (objEl) objEl.textContent = 'OBJECTIVE: ENTER VEHICLE';
+                    console.log('KEY ACQUIRED');
                 }
+            }
 
-                // CONFIRM: swap to selected model, then close
-                window.onCharacterSelected = (newModelPath) => {
-                    this.loadPilot(newModelPath).then(() => {
+            // CLOSET INTERACTION — open Character Select UI
+            if (this.closetPos && this.closetPrompt) {
+                const dist = this.playerContainer.position.distanceTo(this.closetPos);
+                const isNear = dist < 1.5;
+                this.closetPrompt.visible = isNear;
+                if (isNear) this.closetPrompt.lookAt(this.camera.position);
+
+                if (isNear && this.input.interact && !this._closetOpen) {
+                    this.input.interact = false;
+                    this._closetOpen = true;
+
+                    // Freeze movement & animations (NOT full isPaused — we still render)
+                    this._closetFrozen = true;
+                    if (this.mixer) this.mixer.timeScale = 0;
+
+                    // Save camera position so we can restore it on close
+                    this._closetCamPos = this.camera.position.clone();
+
+                    // Focus camera on player
+                    const pPos = this.playerContainer.position;
+                    this.camera.position.set(pPos.x + 2, pPos.y + 1.8, pPos.z + 3);
+                    this.camera.lookAt(pPos.x, pPos.y + 1.0, pPos.z);
+
+                    // Unlock mouse pointer so user can click UI
+                    document.exitPointerLock();
+
+                    // OPEN the in-game character select overlay
+                    if (typeof window.openCharacterSelect === 'function') {
+                        window.openCharacterSelect(this._currentModelPath || '/assets/models/pilot_timmy.fbx');
+                    }
+
+                    // CONFIRM: swap to selected model, then close
+                    window.onCharacterSelected = async (newModelPath) => {
+                        try {
+                            await this.loadPilot(newModelPath);
+                        } catch (e) {
+                            console.error('Retargeting crashed:', e);
+                        } finally {
+                            this._closeCloset();
+                            console.log('CLOSET LOCK RELEASED');
+                        }
+                    };
+
+                    // CANCEL: just close
+                    window.onCharacterSelectClosed = () => {
                         this._closeCloset();
-                        console.log('CLEAN SWAP COMPLETE:', newModelPath);
-                    });
-                };
+                    };
 
-                // CANCEL: just close
-                window.onCharacterSelectClosed = () => {
-                    this._closeCloset();
-                };
-
-                console.log('CLOSET INTERACTION — Character Select opened');
+                    console.log('CLOSET INTERACTION — Character Select opened');
+                }
             }
-        }
 
-        // MISSION TABLE interaction (legacy)
-        if (this.missionTable) {
-            const dist = this.playerContainer.position.distanceTo(this.missionTable.position);
-            const isNear = dist < 3;
-            this.promptMesh.visible = isNear;
-            this.promptMesh.lookAt(this.camera.position);
-            if (isNear && this.input.interact) {
-                console.log('SUCCESS');
-                this.scene.remove(this.missionTable);
-                this.input.interact = false;
+            // MISSION TABLE interaction (legacy)
+            if (this.missionTable) {
+                const dist = this.playerContainer.position.distanceTo(this.missionTable.position);
+                const isNear = dist < 3;
+                this.promptMesh.visible = isNear;
+                this.promptMesh.lookAt(this.camera.position);
+                if (isNear && this.input.interact) {
+                    console.log('SUCCESS');
+                    this.scene.remove(this.missionTable);
+                    this.input.interact = false;
+                }
             }
-        }
 
-        // CAMERA HEARTBEAT: Absolute Loop Bottom
-        this.handleCamera();
+            // CAMERA HEARTBEAT: Absolute Loop Bottom
+            this.handleCamera();
 
-        // ABSOLUTE END: Run animation mixer updates
-        if (this.mixer) {
-            this.mixer.update(actualDt);
-        }
+            // ABSOLUTE END: Run animation mixer updates
+            if (this.mixer) {
+                this.mixer.update(actualDt);
+            }
 
         } catch (e) {
             console.error("Critical Engine Failure in update():", e);
@@ -1144,7 +1148,7 @@ export class StationStage {
             this._closetCamPos = null;
         }
         UIManager.isCharSelectOpen = false;
-        
+
         // Re-lock mouse pointer to game
         this.renderer.domElement.requestPointerLock();
     }
@@ -1297,14 +1301,14 @@ export class StationStage {
 
         // ANIMATION STATE MACHINE EXECUTOR
         this.updateAnimation(actualHVel);
-        
+
         // T-POSE FAILSAFE
         if (this.isOnGround && this.idleAction && !this.isRunning) {
             this.idleAction.setEffectiveWeight(1.0);
             this.idleAction.play();
         }
     }
-    
+
     updateAnimation(speed) {
         if (this.isPaused || !this.mixer) return;
 
@@ -1326,7 +1330,7 @@ export class StationStage {
 
         if (this._animState !== newState) {
             this.mixer.stopAllAction(); // Only flush on boundary transition
-            
+
             // Force reset background weights
             if (this.runAction) this.runAction.setEffectiveWeight(0);
             if (this.idleAction) this.idleAction.setEffectiveWeight(0);
@@ -1366,7 +1370,7 @@ export class StationStage {
 
     handleCamera() {
         if (!this.playerContainer) return; // Prevent Void crash, but do NOT freeze during dialogue or load states
-        
+
         const player = this.playerContainer.position;
         let radius = Math.max(2.0, 2.5);
 
@@ -1445,12 +1449,12 @@ export class StationStage {
         });
 
         // MEDICAL HOLOGRAM: Simplified Humanoid Outline
-        const holoMat = new THREE.MeshLambertMaterial({ 
-            color: 0x00ffcc, transparent: true, opacity: 0.5, 
-            depthWrite: false, emissive: 0x0088aa 
+        const holoMat = new THREE.MeshLambertMaterial({
+            color: 0x00ffcc, transparent: true, opacity: 0.5,
+            depthWrite: false, emissive: 0x0088aa
         });
-        
-        const addMesh = (geo, mat, x, y, z, rx=0, ry=0, rz=0) => {
+
+        const addMesh = (geo, mat, x, y, z, rx = 0, ry = 0, rz = 0) => {
             const m = new THREE.Mesh(geo, mat);
             m.position.set(x, y, z); m.rotation.set(rx, ry, rz);
             this.containmentUnit.add(m);
@@ -1465,13 +1469,13 @@ export class StationStage {
         // PELVIS
         addMesh(new THREE.BoxGeometry(0.2, 0.2, 0.2), holoMat, 0, 0.88, 0); // Box instead of sphere
         // LEFT ARM
-        addMesh(new THREE.CylinderGeometry(0.035, 0.025, 0.4, 6), holoMat, -0.22, 1.15, 0, 0, 0, Math.PI*0.1);
+        addMesh(new THREE.CylinderGeometry(0.035, 0.025, 0.4, 6), holoMat, -0.22, 1.15, 0, 0, 0, Math.PI * 0.1);
         // RIGHT ARM
-        addMesh(new THREE.CylinderGeometry(0.035, 0.025, 0.4, 6), holoMat,  0.22, 1.15, 0, 0, 0, -Math.PI*0.1);
+        addMesh(new THREE.CylinderGeometry(0.035, 0.025, 0.4, 6), holoMat, 0.22, 1.15, 0, 0, 0, -Math.PI * 0.1);
         // LEFT LEG
         addMesh(new THREE.CylinderGeometry(0.05, 0.03, 0.45, 6), holoMat, -0.07, 0.55, 0);
         // RIGHT LEG
-        addMesh(new THREE.CylinderGeometry(0.05, 0.03, 0.45, 6), holoMat,  0.07, 0.55, 0);
+        addMesh(new THREE.CylinderGeometry(0.05, 0.03, 0.45, 6), holoMat, 0.07, 0.55, 0);
 
         console.log('SURGICAL PRECISION APPLIED');
 
@@ -1481,7 +1485,7 @@ export class StationStage {
         ax.fillStyle = '#ff3300'; ax.font = 'bold 52px sans-serif';
         ax.textAlign = 'center'; ax.textBaseline = 'middle'; ax.fillText('!', 32, 32);
         const alertTex = new THREE.CanvasTexture(ac);
-        [ [0.3,1.6,0], [-0.3,1.2,0.2], [0.1,0.75,-0.2] ].forEach(pos => {
+        [[0.3, 1.6, 0], [-0.3, 1.2, 0.2], [0.1, 0.75, -0.2]].forEach(pos => {
             const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: alertTex, color: 0xff3300 }));
             s.scale.set(0.25, 0.25, 0.25);
             s.position.set(...pos); s.visible = false;
