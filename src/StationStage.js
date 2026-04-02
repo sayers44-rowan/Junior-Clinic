@@ -298,33 +298,6 @@ export class StationStage {
             console.warn('THREE.Sky unavailable — using flat sky colour', e);
         }
 
-        // GIRTHY ROCKET: radius 5, height 30 — thick proportions
-        // Body centre at y=15 → top at y=30; nose extends to y=42
-        // 60m skyscraper at (-25, 30, -90) hides body, only nose peeks
-        const rocketMat = new THREE.MeshStandardMaterial({ color: 0xe8e8e8, metalness: 0.85, roughness: 0.15 });
-        const rocketBody = new THREE.Mesh(new THREE.CylinderGeometry(5, 6, 30, 16), rocketMat);
-        rocketBody.position.set(-25, 15, -130);
-        this.scene.add(rocketBody);
-        const noseMat = new THREE.MeshStandardMaterial({ color: 0xff3333, metalness: 0.7, roughness: 0.3 });
-        const nose = new THREE.Mesh(new THREE.ConeGeometry(5, 12, 16), noseMat);
-        nose.position.set(-25, 36, -130); // top of body (y=30) + half-cone (y=6)
-        this.scene.add(nose);
-        // Fins
-        const finMat = new THREE.MeshStandardMaterial({ color: 0xbbbbbb, metalness: 0.6, roughness: 0.4 });
-        for (let i = 0; i < 4; i++) {
-            const fin = new THREE.Mesh(new THREE.BoxGeometry(1.2, 8, 4), finMat);
-            const a = (i / 4) * Math.PI * 2;
-            fin.position.set(-25 + Math.sin(a) * 7, 4, -130 + Math.cos(a) * 7);
-            fin.rotation.y = a;
-            this.scene.add(fin);
-        }
-
-        // 60m SKYSCRAPER BLOCKER: hides rocket body, only red nose peeks above
-        const skyMat = new THREE.MeshStandardMaterial({ color: 0x5a6b7c, metalness: 0.3, roughness: 0.6 });
-        const skyscraper = new THREE.Mesh(new THREE.BoxGeometry(18, 60, 14), skyMat);
-        skyscraper.position.set(-25, 30, -90); // top at y=60 — rocket top (y=30) fully hidden
-        this.scene.add(skyscraper);
-
         // SUPPORTING CITY BUILDINGS
         [
             { p: [20, 0, -110], s: [8, 25, 8], c: 0x8899aa },
@@ -1061,57 +1034,6 @@ export class StationStage {
                 }
             }
 
-            // CLOSET INTERACTION — open Character Select UI
-            if (this.closetPos && this.closetPrompt) {
-                const dist = this.playerContainer.position.distanceTo(this.closetPos);
-                const isNear = dist < 1.5;
-                this.closetPrompt.visible = isNear;
-                if (isNear) this.closetPrompt.lookAt(this.camera.position);
-
-                if (isNear && this.input.interact && !this._closetOpen) {
-                    this.input.interact = false;
-                    this._closetOpen = true;
-
-                    // Freeze movement & animations (NOT full isPaused — we still render)
-                    this._closetFrozen = true;
-                    if (this.mixer) this.mixer.timeScale = 0;
-
-                    // Save camera position so we can restore it on close
-                    this._closetCamPos = this.camera.position.clone();
-
-                    // Focus camera on player
-                    const pPos = this.playerContainer.position;
-                    this.camera.position.set(pPos.x + 2, pPos.y + 1.8, pPos.z + 3);
-                    this.camera.lookAt(pPos.x, pPos.y + 1.0, pPos.z);
-
-                    // Unlock mouse pointer so user can click UI
-                    document.exitPointerLock();
-
-                    // OPEN the in-game character select overlay
-                    if (typeof window.openCharacterSelect === 'function') {
-                        window.openCharacterSelect(this._currentModelPath || '/assets/models/pilot_timmy.fbx');
-                    }
-
-                    // CONFIRM: swap to selected model, then close
-                    window.onCharacterSelected = async (newModelPath) => {
-                        try {
-                            await this.loadPilot(newModelPath);
-                        } catch (e) {
-                            console.error('Retargeting crashed:', e);
-                        } finally {
-                            this._closeCloset();
-                            console.log('CLOSET LOCK RELEASED');
-                        }
-                    };
-
-                    // CANCEL: just close
-                    window.onCharacterSelectClosed = () => {
-                        this._closeCloset();
-                    };
-
-                    console.log('CLOSET INTERACTION — Character Select opened');
-                }
-            }
 
             // MISSION TABLE interaction (legacy)
             if (this.missionTable) {
@@ -1139,22 +1061,6 @@ export class StationStage {
         }
     }
 
-    _closeCloset() {
-        this._closetOpen = false;
-        this._closetFrozen = false;
-        if (this.mixer) this.mixer.timeScale = this.isPaused ? 0 : 1;
-        if (this._closetCamPos) {
-            this.camera.position.copy(this._closetCamPos);
-            this._closetCamPos = null;
-        }
-        UIManager.isCharSelectOpen = false;
-
-        // Re-lock mouse pointer to game
-        this.renderer.domElement.requestPointerLock();
-    }
-
-    // Legacy alias kept for any other callers
-    _resumeFromCloset() { this._closeCloset(); }
 
     _triggerVehicleEntry() {
         // Show dialogue then fade to white
@@ -1218,24 +1124,6 @@ export class StationStage {
         const GRAVITY = -20.0;
         const JUMP_VELOCITY = 8.5; // CEILING PROTECTION: Reduced jump by 15%
         const GROUND_Y = 0.0; // Z-fighting compensation limits base floor
-
-        // JUMP
-        if (this.input.jump && this.isOnGround) {
-            this.velocityY = JUMP_VELOCITY;
-            this.isOnGround = false;
-            this.isJumping = true;
-            this.isRunning = false;
-            this.input.jump = false;
-            // STATE OVERRIDE: hard-switch to jump
-            this.mixer.stopAllAction();
-            if (this.jumpAction) {
-                this.jumpAction.setEffectiveWeight(1.0);
-                this.jumpAction.setEffectiveTimeScale(1.0);
-                this.jumpAction.play();
-            } else {
-                this._playAction(this.floatAction || this.idleAction, 0.15);
-            }
-        }
 
         // Gravity applies strictly if we are airborne
         if (!this.isOnGround) {
@@ -1506,6 +1394,29 @@ export class StationStage {
         this.containmentUnit.add(this.containmentPrompt);
 
         this.scene.add(this.containmentUnit);
+    }
+
+    _spawnRocket() {
+        const bodyMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 });
+        const bodyGeo = new THREE.CylinderGeometry(2.5, 2.5, 15, 32);
+        const body = new THREE.Mesh(bodyGeo, bodyMat);
+        body.position.set(-25, 7.5, -45);
+        this.scene.add(body);
+
+        const noseMat = new THREE.MeshStandardMaterial({ color: 0xd32f2f, roughness: 0.3 });
+        const noseGeo = new THREE.ConeGeometry(2.5, 6, 32);
+        const nose = new THREE.Mesh(noseGeo, noseMat);
+        nose.position.set(-25, 18, -45);
+        this.scene.add(nose);
+
+        for (let i = 0; i < 4; i++) {
+            const fin = new THREE.Mesh(new THREE.BoxGeometry(1, 6, 4), noseMat);
+            const a = (i / 4) * Math.PI * 2;
+            fin.position.set(-25 + Math.sin(a) * 3.5, 3, -45 + Math.cos(a) * 3.5);
+            fin.rotation.y = a;
+            fin.rotation.x = Math.PI / 4;
+            this.scene.add(fin);
+        }
     }
 }
 

@@ -16,8 +16,12 @@ class SparcGame {
     init() {
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.shadowMap.enabled = true;
-        document.getElementById('app').appendChild(this.renderer.domElement);
-        this.gameManager = new GameStateManager(this.scene, this.camera, this.renderer);
+        document.getElementById('game-container').appendChild(this.renderer.domElement);
+
+        const chosenPilot = localStorage.getItem('selectedPilot') || 'Timmy';
+        const pilotPath = '/assets/models/pilot_' + chosenPilot.toLowerCase() + '.fbx';
+
+        this.gameManager = new GameStateManager(this.scene, this.camera, this.renderer, pilotPath);
         this.gameManager.start();
     }
 
@@ -37,4 +41,3 @@ new SparcGame();
 // PART INTEGRATION PLACEHOLDERS
 window.startPart2 = () => { console.log("Part 2 Placeholder: Launching Vehicle Bay..."); };
 window.startPart3 = () => { console.log("Part 3 Placeholder: Initiating Planet Descent..."); };
-

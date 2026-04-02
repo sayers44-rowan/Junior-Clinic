@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 import { StationStage, globalManager } from './StationStage.js';
-import { UIManager } from './UIManager.js';
 
 export class GameStateManager {
-    constructor(scene, camera, renderer) {
+    constructor(scene, camera, renderer, pilotPath = null) {
         this.scene = scene;
         this.camera = camera;
         this.renderer = renderer;
+        this.pilotPath = pilotPath;
         this.currentStage = null;
         this.started = false;
 
@@ -17,7 +17,7 @@ export class GameStateManager {
         };
 
         // Instantiate StationStage early so it begins loading immediately
-        this.currentStage = new StationStage(scene, camera, renderer, 'CADET', null);
+        this.currentStage = new StationStage(scene, camera, renderer, 'CADET', this.pilotPath);
     }
 
     _preloadPilot() {
@@ -31,11 +31,10 @@ export class GameStateManager {
     }
 
     start() {
-        this.ui = new UIManager((playerName, selectedChar, selectedModel) => {
-            this._launchGame(playerName, selectedChar, selectedModel);
-        });
-        this.ui.showMainMenu();
-        console.log('PHASE 0 INITIALIZED');
+        // COMPLETE UIManager PURGE
+        this.ui = null;
+        this._launchGame('CADET', 'Alpha', 'Default');
+        console.log('PHASE 0 BYPASSED - UIMANAGER PURGED');
     }
 
     _launchGame(playerName, selectedChar, selectedModel) {
@@ -44,7 +43,7 @@ export class GameStateManager {
         this.currentStage.playerName = playerName;
         this.currentStage._uiManager = this.ui;
         // Load the chosen model (Clean Swap handles disposal if already loaded)
-        this.currentStage.loadPilot(selectedModel || '/assets/models/pilot_timmy.fbx');
+        this.currentStage.loadPilot(this.pilotPath || '/assets/models/pilot_timmy.fbx');
         const callsign = document.getElementById('hub-callsign');
         if (callsign) callsign.textContent = playerName.toUpperCase();
     }
