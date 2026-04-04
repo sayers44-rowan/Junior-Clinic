@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,124 +10,28 @@
             margin: 0;
             overflow: hidden;
             background: #000;
-            color: #fff;
-            font-family: 'Courier New', Courier, monospace;
-            display: flex;
+            display: block;
             height: 100vh;
-        }
-
-        #ui-panel {
-            width: 30%;
-            background: #111;
-            padding: 40px;
-            box-sizing: border-box;
-            display: flex;
-            flex-direction: column;
-            border-right: 2px solid #333;
-        }
-
-        h1 {
-            text-align: center;
-            letter-spacing: 2px;
-            margin-bottom: 40px;
-            color: #d32f2f;
-        }
-
-        #character-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin-bottom: auto;
-        }
-
-        .char-btn {
-            background: #222;
-            color: #fff;
-            border: 2px solid #444;
-            padding: 20px 10px;
-            font-size: 18px;
-            font-weight: bold;
-            font-family: inherit;
-            cursor: pointer;
-            border-radius: 8px;
-            transition: all 0.2s;
-        }
-
-        .char-btn:hover {
-            background: #444;
-            border-color: #fff;
-        }
-
-        .char-btn.selected {
-            background: #d32f2f;
-            border-color: #ff5252;
-            color: white;
-            box-shadow: 0 0 15px rgba(211, 47, 47, 0.5);
-        }
-
-        #deploy-btn {
-            background: #d32f2f;
-            color: #fff;
-            border: none;
-            padding: 25px;
-            font-size: 24px;
-            font-weight: bold;
-            font-family: inherit;
-            cursor: pointer;
-            border-radius: 8px;
-            letter-spacing: 4px;
-            transition: all 0.2s;
-        }
-
-        #deploy-btn:hover {
-            background: #b71c1c;
-            transform: scale(1.02);
+            width: 100vw;
         }
 
         #webgl-container {
-            width: 70%;
-            position: relative;
-            background: #222;
+            width: 100%;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
         }
     </style>
 </head>
+
 <body>
-    <div id="ui-panel">
-        <h1>SELECT PILOT</h1>
-        <div id="character-grid">
-            <button class="char-btn selected" data-name="Timmy">TIMMY</button>
-            <button class="char-btn" data-name="Ami">AMI</button>
-            <button class="char-btn" data-name="Bryce">BRYCE</button>
-            <button class="char-btn" data-name="Adam">ADAM</button>
-            <button class="char-btn" data-name="Jackie">JACKIE</button>
-            <button class="char-btn" data-name="Michelle">MICHELLE</button>
-        </div>
-        <button id="deploy-btn">DEPLOY</button>
-    </div>
     <div id="webgl-container"></div>
-
     <script type="module">
-        import { initPreview, loadPreviewModel } from '/src/CharacterPreview.js';
-        
+        import { initPreview } from '/src/CharacterPreview.js';
+        // This hands total control over to your Three.js script
         initPreview(document.getElementById('webgl-container'));
-
-        let currentSelection = 'Timmy';
-        loadPreviewModel(currentSelection);
-
-        const buttons = document.querySelectorAll('.char-btn');
-        buttons.forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                buttons.forEach(b => b.classList.remove('selected'));
-                e.target.classList.add('selected');
-                currentSelection = e.target.dataset.name;
-                loadPreviewModel(currentSelection);
-            });
-        });
-
-        document.getElementById('deploy-btn').addEventListener('click', () => {
-            localStorage.setItem('selectedPilot', currentSelection);
-            window.location.href = 'game.html';
-        });
     </script>
 </body>
+
 </html>
