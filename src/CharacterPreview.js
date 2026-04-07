@@ -173,10 +173,45 @@ export function initPreview(container) {
     scene.add(sunLight);
 
     const gltfLoader = new GLTFLoader();
+
+    // --- THE TRUE SKYBOX OVERRIDE ---
     gltfLoader.load(skyboxUrl, (gltf) => {
         skyboxModel = gltf.scene;
-        skyboxModel.scale.set(100, 100, 100);
-        scene.add(skyboxModel);
+
+        let skyboxTexture = null;
+
+        // Find the image map buried in the GLB
+        skyboxModel.traverse((child) => {
+            if (child.isMesh && child.material && child.material.map) {
+                skyboxTexture = child.material.map;
+            }
+        });
+
+        // If we found the texture, inject it directly into the scene background
+        if (skyboxTexture) {
+            skyboxTexture.mapping = THREE.EquirectangularReflectionMapping;
+            scene.background = skyboxTexture;
+            scene.environment = skyboxTexture; // Adds realistic lighting
+        } else {
+            // Fallback: Force the massive dome
+            skyboxModel.scale.set(500, 500, 500);
+            skyboxModel.position.set(0, 0, 0);
+            skyboxModel.traverse((child) => {
+                if (child.isMesh) {
+                    child.frustumCulled = false;
+                    child.renderOrder = -1;
+                    if (child.material) {
+                        child.material = new THREE.MeshBasicMaterial({
+                            map: child.material.map || child.material.emissiveMap,
+                            side: THREE.BackSide,
+                            depthWrite: false,
+                            fog: false
+                        });
+                    }
+                }
+            });
+            scene.add(skyboxModel);
+        }
     });
 
     gltfLoader.load(livingRoomUrl, (gltf) => {
