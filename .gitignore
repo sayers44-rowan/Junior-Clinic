@@ -1,0 +1,22 @@
+# AI assistant config — not part of the project
+.agent/
+
+# Dependencies
+node_modules/
+
+# Vite build output
+dist/
+.vite/
+
+# Environment variables (never commit secrets)
+.env
+.env.local
+.env.*.local
+
+# OS clutter
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
