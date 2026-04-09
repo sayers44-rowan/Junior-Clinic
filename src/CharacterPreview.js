@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
+import GUI from 'three/examples/jsm/libs/lil-gui.module.min.js';
 
 import pilotTimmyUrl from '../assets/models/pilot_timmy.fbx?url';
 import pilotAmiUrl from '../assets/models/pilot_ami.fbx?url';
@@ -8,8 +10,10 @@ import pilotBryceUrl from '../assets/models/pilot_bryce.fbx?url';
 import pilotAdamUrl from '../assets/models/pilot_adam.fbx?url';
 import pilotJackieUrl from '../assets/models/pilot_jackie.fbx?url';
 import pilotMichelleUrl from '../assets/models/pilot_michelle.fbx?url';
-import livingRoomUrl from '../assets/models/our_little_living_room.glb?url';
+
+import desertUrl from '../assets/models/desert_landscape.glb?url';
 import skyboxUrl from '../assets/models/skybox_skydays_3.glb?url';
+import vanUrl from '../assets/models/van.glb?url';
 
 import bgBonesUrl from '../assets/images/bg_bones.png?url';
 import bgLungsUrl from '../assets/images/bg_lungs.png?url';
@@ -22,16 +26,33 @@ import portraitAdamUrl from '../assets/images/portrait_adam.png?url';
 import portraitJackieUrl from '../assets/images/portrait_jackie.png?url';
 import portraitMichelleUrl from '../assets/images/portrait_michelle.png?url';
 
-let scene, camera, renderer, roomModel, skyboxModel;
+let scene, camera, renderer, roomModel, skyboxModel, vanModel, gui;
 const clock = new THREE.Clock();
 let activeMixer = null;
-let isDragging = false;
 const modelCache = {};
 let activeCharacter = null;
 let modelsLoadedCount = 0;
 const TOTAL_MODELS = 6;
 let targetProgress = 0;
 let currentProgress = 0;
+
+const lightingPresets = {
+    'Preset 1': { ambientInt: 2.745, sunInt: 2.3, sunX: -27, sunY: 24.6, sunZ: 19.7 },
+    'Preset 2': { ambientInt: 2.38, sunInt: 1.93, sunX: 30.7, sunY: -9.8, sunZ: -34.4 },
+    'Preset 3': { ambientInt: 0.965, sunInt: 4.39, sunX: -6.1, sunY: 8.6, sunZ: -11.1 },
+    'Preset 4': { ambientInt: 0.965, sunInt: 4.39, sunX: -6.1, sunY: 9.8, sunZ: -11 },
+    'Preset 5': { ambientInt: 1.085, sunInt: 3.77, sunX: -3.7, sunY: 7.4, sunZ: -7.4 },
+    'Custom': {} // Placeholder if they manually drag a slider
+};
+
+const settings = {
+    charRotation: 0,
+    activePreset: 'Preset 1',
+    // Defaulting to Preset 1 to start
+    ambientInt: 2.745,
+    sunInt: 2.3,
+    sunX: -27, sunY: 24.6, sunZ: 19.7
+};
 
 const fontLink = document.createElement('link');
 fontLink.rel = 'stylesheet';
@@ -54,7 +75,7 @@ document.head.appendChild(styleSheet);
 
 const loadingData = [
     { bg: bgBonesUrl, color: '#00ffff', fact: "Babies are born with 300 bones, but adults only have 206!", layout: 'top', textTop: '3.5vh', barBottom: '5vh', barWidth: '90%' },
-    { bg: bgLungsUrl, color: '#ff66b3', fact: "Your lungs can hold about 1.5 gallons <span style='white-space: nowrap;'>(6 liters)</span> of air!", layout: 'right', rightOffset: '14vw' },
+    { bg: bgLungsUrl, color: '#ff66b3', fact: "Your lungs can hold about 1.5 gallons (6 liters) of air!", layout: 'right', rightOffset: '14vw' },
     { bg: bgCellsUrl, color: '#ff3333', fact: "Normal red blood cells are shaped like inner tubes, but sickle cells look like crescent moons!", layout: 'top', textTop: '1.5vh', factFontSize: '1.8vw', barBottom: '5vh', barWidth: '90%' }
 ];
 const selectedScreen = loadingData[Math.floor(Math.random() * loadingData.length)];
@@ -119,10 +140,8 @@ function createPilotSelectUI(container) {
         tile.onclick = () => {
             document.querySelectorAll('.pilot-tile').forEach(t => { t.classList.remove('active'); t.style.borderImage = 'none'; t.style.borderColor = 'transparent'; t.style.boxShadow = 'none'; });
             tile.classList.add('active');
-
             tile.style.borderImage = `linear-gradient(to right, ${pilot.color1}, ${pilot.color2}) 1`;
             tile.style.boxShadow = `0 0 25px -3px ${pilot.color1}, 0 0 15px -3px ${pilot.color2}`;
-
             loadPreviewModel(pilot.id);
         };
         menu.appendChild(tile);
@@ -141,7 +160,6 @@ function createPilotSelectUI(container) {
         }
     };
     menu.appendChild(startBtn);
-
     container.appendChild(menu);
 }
 
@@ -150,88 +168,138 @@ export function initPreview(container) {
     createPilotSelectUI(container);
 
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x87CEEB);
-    camera = new THREE.PerspectiveCamera(40, container.clientWidth / container.clientHeight, 0.1, 5000);
-    camera.position.set(0.1, 1.25, 2.7);
-    camera.lookAt(0, 0.9, 0);
+    camera = new THREE.PerspectiveCamera(40, container.clientWidth / container.clientHeight, 0.1, 15000);
+
+    // LOCKED CAMERA
+    camera.position.set(-0.0967297942535286, 1.6394077121228656, -5.358637838752932);
+    camera.lookAt(0, 1.301620731987245, 0);
 
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     container.appendChild(renderer.domElement);
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 1.45);
+    // GUI INITIALIZATION
+    gui = new GUI({ title: 'God Mode Tools' });
+
+    const charFolder = gui.addFolder('Character Controls');
+    charFolder.add(settings, 'charRotation', -Math.PI, Math.PI).name('Model Rotation').listen();
+
+    const ambientLight = new THREE.AmbientLight(0xffeedd, settings.ambientInt);
     scene.add(ambientLight);
-    const sunLight = new THREE.DirectionalLight(0xffffff, 4.2);
-    sunLight.position.set(2, 12.5, -2);
+
+    const sunLight = new THREE.DirectionalLight(0xfffaeb, settings.sunInt);
+    sunLight.position.set(settings.sunX, settings.sunY, settings.sunZ);
     sunLight.castShadow = true;
-    sunLight.shadow.mapSize.width = 2048;
-    sunLight.shadow.mapSize.height = 2048;
+
+    sunLight.shadow.mapSize.set(4096, 4096);
+    sunLight.shadow.camera.near = 0.5;
+    sunLight.shadow.camera.far = 150;
+    sunLight.shadow.camera.left = -15;
+    sunLight.shadow.camera.right = 15;
+    sunLight.shadow.camera.top = 15;
+    sunLight.shadow.camera.bottom = -15;
+    sunLight.shadow.bias = -0.0005;
     scene.add(sunLight);
 
-    const gltfLoader = new GLTFLoader();
+    const lightFolder = gui.addFolder('Lighting Tweaks');
 
-    // --- THE TRUE SKYBOX OVERRIDE ---
-    gltfLoader.load(skyboxUrl, (gltf) => {
-        skyboxModel = gltf.scene;
+    // PRESET DROPDOWN LOGIC
+    lightFolder.add(settings, 'activePreset', Object.keys(lightingPresets)).name('Preset').onChange(presetName => {
+        if (presetName !== 'Custom') {
+            const p = lightingPresets[presetName];
 
-        let skyboxTexture = null;
+            // Update Settings Object
+            settings.ambientInt = p.ambientInt;
+            settings.sunInt = p.sunInt;
+            settings.sunX = p.sunX;
+            settings.sunY = p.sunY;
+            settings.sunZ = p.sunZ;
 
-        // Find the image map buried in the GLB
-        skyboxModel.traverse((child) => {
-            if (child.isMesh && child.material && child.material.map) {
-                skyboxTexture = child.material.map;
-            }
-        });
-
-        // If we found the texture, inject it directly into the scene background
-        if (skyboxTexture) {
-            skyboxTexture.mapping = THREE.EquirectangularReflectionMapping;
-            scene.background = skyboxTexture;
-            scene.environment = skyboxTexture; // Adds realistic lighting
-        } else {
-            // Fallback: Force the massive dome
-            skyboxModel.scale.set(500, 500, 500);
-            skyboxModel.position.set(0, 0, 0);
-            skyboxModel.traverse((child) => {
-                if (child.isMesh) {
-                    child.frustumCulled = false;
-                    child.renderOrder = -1;
-                    if (child.material) {
-                        child.material = new THREE.MeshBasicMaterial({
-                            map: child.material.map || child.material.emissiveMap,
-                            side: THREE.BackSide,
-                            depthWrite: false,
-                            fog: false
-                        });
-                    }
-                }
-            });
-            scene.add(skyboxModel);
+            // Update Actual Lights
+            ambientLight.intensity = p.ambientInt;
+            sunLight.intensity = p.sunInt;
+            sunLight.position.set(p.sunX, p.sunY, p.sunZ);
         }
     });
 
-    gltfLoader.load(livingRoomUrl, (gltf) => {
+    // MANUAL SLIDERS (Using .listen() so they snap to the preset values)
+    lightFolder.add(settings, 'ambientInt', 0, 5).name('Ambient Power').listen().onChange(v => { ambientLight.intensity = v; });
+    lightFolder.add(settings, 'sunInt', 0, 10).name('Sun Power').listen().onChange(v => { sunLight.intensity = v; });
+    lightFolder.add(settings, 'sunX', -50, 50).name('Sun X').listen().onChange(v => { sunLight.position.x = v; });
+    lightFolder.add(settings, 'sunY', -50, 50).name('Sun Y').listen().onChange(v => { sunLight.position.y = v; });
+    lightFolder.add(settings, 'sunZ', -50, 50).name('Sun Z').listen().onChange(v => { sunLight.position.z = v; });
+
+    const dracoLoader = new DRACOLoader();
+    dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+    const gltfLoader = new GLTFLoader();
+    gltfLoader.setDRACOLoader(dracoLoader);
+
+    gltfLoader.load(skyboxUrl, (gltf) => {
+        skyboxModel = gltf.scene;
+        skyboxModel.scale.set(500, 500, 500);
+        skyboxModel.position.set(0, -50, 0);
+        skyboxModel.traverse(child => {
+            if (child.isMesh) {
+                child.frustumCulled = false;
+                child.renderOrder = -1;
+                if (child.material) {
+                    child.material.side = THREE.BackSide;
+                    child.material.depthWrite = false;
+                    child.material.fog = false;
+                }
+            }
+        });
+        scene.add(skyboxModel);
+    });
+
+    gltfLoader.load(desertUrl, (gltf) => {
         roomModel = gltf.scene;
-        roomModel.position.set(-0.2, 0, 1.1);
-        roomModel.rotation.set(0, -0.48, 0);
-        roomModel.traverse((child) => { if (child.isMesh) { child.receiveShadow = true; child.castShadow = true; } });
+        roomModel.scale.set(1, 1, 1);
+        // LOCKED MAP
+        roomModel.position.set(3.6, 0.09, 65);
+        roomModel.traverse(child => { if (child.isMesh) { child.receiveShadow = true; child.castShadow = true; } });
         scene.add(roomModel);
+    });
+
+    gltfLoader.load(vanUrl, (gltf) => {
+        vanModel = gltf.scene;
+        // LOCKED VAN
+        vanModel.scale.set(0.67, 0.67, 0.67);
+        vanModel.position.set(1.6, 0.18, 1.5);
+        vanModel.rotation.set(0, 1.08070, 0);
+        vanModel.traverse(child => {
+            if (child.isMesh) {
+                child.receiveShadow = true;
+                child.castShadow = true;
+            }
+        });
+        scene.add(vanModel);
     });
 
     preloadAllCharacters();
 
+    // MOUSE DRAG ROTATION (Camera controls stripped)
+    let isDragging = false;
     renderer.domElement.addEventListener('mousedown', () => { isDragging = true; });
     renderer.domElement.addEventListener('mouseup', () => { isDragging = false; });
     renderer.domElement.addEventListener('mousemove', (e) => {
-        if (isDragging && activeCharacter && modelCache[activeCharacter]) {
-            modelCache[activeCharacter].rotation.y += e.movementX * 0.01;
+        if (isDragging) {
+            settings.charRotation += e.movementX * 0.01;
+            if (settings.charRotation > Math.PI) settings.charRotation -= Math.PI * 2;
+            if (settings.charRotation < -Math.PI) settings.charRotation += Math.PI * 2;
         }
     });
-    window.addEventListener('resize', () => { camera.aspect = container.clientWidth / container.clientHeight; camera.updateProjectionMatrix(); renderer.setSize(container.clientWidth, container.clientHeight); });
+
+    window.addEventListener('resize', () => {
+        camera.aspect = container.clientWidth / container.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(container.clientWidth, container.clientHeight);
+    });
     animate();
 }
 
@@ -243,7 +311,7 @@ function preloadAllCharacters() {
         loader.load(char.path, (fbx) => {
             fbx.scale.set(0.009, 0.009, 0.009);
             fbx.position.set(0, 0.1, 0);
-            fbx.visible = true; // KEEP TRUE FOR PRE-RENDER COMPILE
+            fbx.visible = true;
 
             fbx.traverse((child) => {
                 if (child.isMesh) {
@@ -252,44 +320,42 @@ function preloadAllCharacters() {
 
                     if (child.material) {
                         const mats = Array.isArray(child.material) ? child.material : [child.material];
-                        const newMats = [];
+                        const newMats = []; // Creating an array for the rebuilt materials
 
                         mats.forEach(m => {
                             const matName = m.name ? m.name.toLowerCase() : '';
-                            const isGlass = matName.includes('glass') || matName.includes('lens') || matName.includes('goggle') || matName.includes('shade') || matName.includes('aviator') || (m.opacity < 0.9 && !m.map);
+                            const isGlass = matName.includes('glass') || matName.includes('lens') || matName.includes('goggle') || matName.includes('shade') || matName.includes('aviator');
 
+                            // THE NUCLEAR OPTION: Build a completely fresh material
                             let newMat = new THREE.MeshStandardMaterial({
                                 name: m.name,
-                                color: m.color,
-                                map: m.map,
-                                normalMap: m.normalMap,
+                                color: m.color || 0xffffff,
+                                map: m.map || null,
+                                normalMap: m.normalMap || null,
                                 roughness: 0.8,
                                 metalness: 0.1,
-                                side: THREE.DoubleSide
+                                side: THREE.DoubleSide // Fixes hollow hair and clothes
                             });
 
                             if (isGlass) {
-                                // HARDCODED DARK TINTED GLASS
-                                newMat.color.setHex(0x111111);
                                 newMat.transparent = true;
                                 newMat.opacity = 0.65;
-                                newMat.roughness = 0.1;
-                                newMat.metalness = 0.8;
                                 newMat.depthWrite = false;
-                            }
-                            else if (newMat.map) {
-                                newMat.transparent = true;
-                                newMat.alphaTest = 0.5;
+                                newMat.color.setHex(0x111111);
+                            } else {
+                                newMat.transparent = false; // Forces Jackie to be completely solid
                                 newMat.depthWrite = true;
-                            }
-                            else {
-                                newMat.transparent = false;
-                                newMat.depthWrite = true;
+
+                                // Hardware-level cutout for hair/eyelashes
+                                if (newMat.map) {
+                                    newMat.alphaTest = 0.5; // Discards invisible pixels so they don't block shadows or geometry
+                                }
                             }
 
                             newMats.push(newMat);
                         });
 
+                        // Apply the freshly built materials back to the mesh
                         child.material = newMats.length === 1 ? newMats[0] : newMats;
                     }
                 }
@@ -308,15 +374,10 @@ function preloadAllCharacters() {
 
             if (modelsLoadedCount === TOTAL_MODELS) {
                 renderer.compile(scene, camera);
-                renderer.render(scene, camera);
-
-                // 5 SECOND BRUTE FORCE GPU CACHE DELAY
                 setTimeout(() => {
                     Object.values(modelCache).forEach(model => { model.visible = false; });
-
                     const targetChar = activeCharacter || 'timmy';
                     activateModel(targetChar);
-
                     const checkFull = setInterval(() => {
                         if (currentProgress >= 99) {
                             clearInterval(checkFull);
@@ -332,40 +393,41 @@ function preloadAllCharacters() {
 
 export function loadPreviewModel(name) {
     const n = name.toLowerCase();
-    if (activeCharacter === n) return;
+    if (activeCharacter === n || modelsLoadedCount < TOTAL_MODELS) return;
     activeCharacter = n;
-    if (modelsLoadedCount < TOTAL_MODELS) return;
-
     Object.values(modelCache).forEach(model => { model.visible = false; });
     activeMixer = null;
-
     if (modelCache[n]) { activateModel(n); }
 }
 
 function activateModel(name) {
     const model = modelCache[name];
     if (!model) return;
-
     model.visible = true;
-    model.rotation.set(0, 0, 0);
+
+    settings.charRotation = 0;
 
     if (model.userData.mixer) { activeMixer = model.userData.mixer; }
-
     const tile = document.getElementById(`tile-${name}`);
     if (tile && !tile.classList.contains('active')) { tile.click(); }
 }
 
 function animate() {
     requestAnimationFrame(animate);
+    const dt = clock.getDelta();
     if (currentProgress < targetProgress) {
         currentProgress += 0.4;
-        if (currentProgress > targetProgress) currentProgress = targetProgress;
         const textEl = document.getElementById('loading-text');
         const barEl = document.getElementById('loading-bar');
         if (textEl) textEl.innerText = `LOADING... ${Math.floor(currentProgress)}%`;
         if (barEl) barEl.style.width = `${currentProgress}%`;
     }
-    if (activeMixer) { activeMixer.update(clock.getDelta()); }
-    if (skyboxModel) { skyboxModel.rotation.y += 0.0005; }
+
+    if (activeCharacter && modelCache[activeCharacter]) {
+        modelCache[activeCharacter].rotation.y = settings.charRotation;
+    }
+
+    if (activeMixer) activeMixer.update(dt);
+    if (skyboxModel) skyboxModel.rotation.y += 0.0005;
     renderer.render(scene, camera);
 }
