@@ -67,7 +67,6 @@ styleSheet.innerText = `
     
     .bottom-gradient { position: absolute; bottom: 0; left: 0; width: 100vw; height: 250px; background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0) 100%); z-index: 99; pointer-events: none; }
     
-    /* Pulled down very very slightly from 80px to 70px */
     .hud-wrapper { position: absolute; bottom: 70px; left: 46%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; z-index: 100; font-family: 'Fredoka', sans-serif; pointer-events: none; }
     
     .hud-controls { display: flex; align-items: center; gap: 30px; margin-bottom: 10px; pointer-events: auto; }
@@ -183,7 +182,6 @@ export function initPreview(container) {
     scene.background = new THREE.Color('#333333');
 
     camera = new THREE.PerspectiveCamera(40, container.clientWidth / container.clientHeight, 0.1, 15000);
-    // Preserving your specific coordinates
     camera.position.set(0.07271779979744147, 1.4540482035505606, -5.22652829437905);
     camera.lookAt(-0.24188220020255968, 1.0890482035505586, -0.029528294379020787);
 
@@ -342,7 +340,10 @@ function preloadAllCharacters() {
     characters.forEach(char => {
         loader.load(char.path, (fbx) => {
             fbx.scale.set(0.009, 0.009, 0.009);
-            fbx.position.set(0, 0.1, 0);
+
+            const xOffset = (char.id === 'jackie' || char.id === 'michelle') ? 0.15 : 0;
+            fbx.position.set(xOffset, 0.1, 0);
+
             fbx.visible = true;
 
             fbx.traverse((child) => {
@@ -357,6 +358,7 @@ function preloadAllCharacters() {
                         mats.forEach(m => {
                             const matName = m.name ? m.name.toLowerCase() : '';
                             const isGlass = matName.includes('glass') || matName.includes('lens') || matName.includes('goggle') || matName.includes('shade') || matName.includes('aviator');
+                            const isHair = matName.includes('hair') || matName.includes('beard') || matName.includes('mustache') || matName.includes('lash') || matName.includes('brow');
 
                             let newMat = new THREE.MeshStandardMaterial({
                                 name: m.name,
@@ -373,10 +375,13 @@ function preloadAllCharacters() {
                                 newMat.opacity = 0.65;
                                 newMat.depthWrite = false;
                                 newMat.color.setHex(0x111111);
+                            } else if (isHair) {
+                                newMat.transparent = true;
+                                newMat.depthWrite = true;
+                                newMat.alphaTest = 0.3;
                             } else {
                                 newMat.transparent = false;
                                 newMat.depthWrite = true;
-
                                 if (newMat.map) {
                                     newMat.alphaTest = 0.5;
                                 }
