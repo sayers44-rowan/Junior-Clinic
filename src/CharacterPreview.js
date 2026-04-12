@@ -19,13 +19,6 @@ import bgBonesUrl from '../assets/images/bg_bones.png?url';
 import bgLungsUrl from '../assets/images/bg_lungs.png?url';
 import bgCellsUrl from '../assets/images/bg_cells.png?url';
 
-import portraitTimmyUrl from '../assets/images/portrait_timmy.png?url';
-import portraitAmiUrl from '../assets/images/portrait_ami.png?url';
-import portraitBryceUrl from '../assets/images/portrait_bryce.png?url';
-import portraitAdamUrl from '../assets/images/portrait_adam.png?url';
-import portraitJackieUrl from '../assets/images/portrait_jackie.png?url';
-import portraitMichelleUrl from '../assets/images/portrait_michelle.png?url';
-
 let scene, camera, renderer, roomModel, skyboxModel, vanModel, gui;
 const clock = new THREE.Clock();
 let activeMixer = null;
@@ -36,19 +29,28 @@ const TOTAL_MODELS = 6;
 let targetProgress = 0;
 let currentProgress = 0;
 
+const pilots = [
+    { id: 'timmy', name: 'Timmy' },
+    { id: 'ami', name: 'Ami' },
+    { id: 'bryce', name: 'Bryce' },
+    { id: 'adam', name: 'Adam' },
+    { id: 'jackie', name: 'Jackie' },
+    { id: 'michelle', name: 'Michelle' }
+];
+let currentPilotIndex = 0;
+
 const lightingPresets = {
     'Preset 1': { ambientInt: 2.745, sunInt: 2.3, sunX: -27, sunY: 24.6, sunZ: 19.7 },
     'Preset 2': { ambientInt: 2.38, sunInt: 1.93, sunX: 30.7, sunY: -9.8, sunZ: -34.4 },
     'Preset 3': { ambientInt: 0.965, sunInt: 4.39, sunX: -6.1, sunY: 8.6, sunZ: -11.1 },
     'Preset 4': { ambientInt: 0.965, sunInt: 4.39, sunX: -6.1, sunY: 9.8, sunZ: -11 },
     'Preset 5': { ambientInt: 1.085, sunInt: 3.77, sunX: -3.7, sunY: 7.4, sunZ: -7.4 },
-    'Custom': {} // Placeholder if they manually drag a slider
+    'Custom': {}
 };
 
 const settings = {
-    charRotation: 0,
+    charRotation: 3.13,
     activePreset: 'Preset 1',
-    // Defaulting to Preset 1 to start
     ambientInt: 2.745,
     sunInt: 2.3,
     sunX: -27, sunY: 24.6, sunZ: 19.7
@@ -62,14 +64,21 @@ document.head.appendChild(fontLink);
 const styleSheet = document.createElement("style");
 styleSheet.innerText = `
     @keyframes barShimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
-    .pilot-tile { display: flex; align-items: center; padding: 10px; background: rgba(255, 255, 255, 0.03); border-radius: 12px; cursor: pointer; transition: all 0.3s ease; border: 1px solid transparent; margin-bottom: 8px; }
-    .pilot-tile:hover { background: rgba(255, 255, 255, 0.1); transform: translateX(5px); border-color: rgba(255, 255, 255, 0.3); }
-    .pilot-tile.active { background: rgba(255, 255, 255, 0.12); border-width: 2px; }
-    .pilot-portrait { width: 50px; height: 50px; object-fit: contain; margin-right: 12px; }
-    .pilot-name { color: white; font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 1px; }
-    #pilot-select-sidebar { display: flex !important; visibility: visible !important; pointer-events: auto !important; }
-    .start-btn { margin-top: 15px; background: #4CAF50; color: #fff; border: 2px solid #45a049; padding: 15px; font-size: 1.2rem; font-weight: bold; font-family: 'Fredoka', sans-serif; cursor: pointer; border-radius: 12px; letter-spacing: 2px; transition: all 0.2s; text-align: center; box-shadow: 0 4px 15px rgba(76, 175, 80, 0.4); }
-    .start-btn:hover { background: #66BB6A; transform: scale(1.05); box-shadow: 0 6px 20px rgba(76, 175, 80, 0.6); border-color: #81C784; }
+    
+    .bottom-gradient { position: absolute; bottom: 0; left: 0; width: 100vw; height: 250px; background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0) 100%); z-index: 99; pointer-events: none; }
+    
+    /* Pulled down very very slightly from 80px to 70px */
+    .hud-wrapper { position: absolute; bottom: 70px; left: 46%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; z-index: 100; font-family: 'Fredoka', sans-serif; pointer-events: none; }
+    
+    .hud-controls { display: flex; align-items: center; gap: 30px; margin-bottom: 10px; pointer-events: auto; }
+    
+    .arrow-btn { background: none; border: none; color: rgba(255,255,255,0.4); font-size: 2.8rem; cursor: pointer; transition: all 0.2s ease; padding: 0; outline: none; text-shadow: 0 4px 10px rgba(0,0,0,0.8); }
+    .arrow-btn:hover { color: #ffffff; transform: scale(1.15); text-shadow: 0 0 20px rgba(255,255,255,0.8); }
+    
+    .indicator-num { color: #ffffff; font-size: 2.8rem; font-weight: 700; min-width: 50px; text-align: center; text-shadow: 0 4px 15px rgba(0,0,0,1), 0 0 20px rgba(255,255,255,0.2); }
+    
+    .start-btn { background: transparent; color: #fff; border: 2px solid rgba(255,255,255,0.6); padding: 10px 40px; font-size: 1.1rem; font-weight: bold; cursor: pointer; border-radius: 4px; letter-spacing: 5px; transition: all 0.2s ease; text-transform: uppercase; text-shadow: 0 2px 5px rgba(0,0,0,0.8); box-shadow: 0 4px 15px rgba(0,0,0,0.5); pointer-events: auto; }
+    .start-btn:hover { background: rgba(255,255,255,1); color: #000; text-shadow: none; box-shadow: 0 0 25px rgba(255,255,255,0.5); border-color: #ffffff; }
 `;
 document.head.appendChild(styleSheet);
 
@@ -113,54 +122,57 @@ if (selectedScreen.layout === 'top') {
 }
 
 function createPilotSelectUI(container) {
-    const pilots = [
-        { id: 'timmy', name: 'Timmy', portrait: portraitTimmyUrl, color1: '#FF0000', color2: '#FFFFFF' },
-        { id: 'ami', name: 'Ami', portrait: portraitAmiUrl, color1: '#00FFFF', color2: '#FFFFFF' },
-        { id: 'bryce', name: 'Bryce', portrait: portraitBryceUrl, color1: '#A52A2A', color2: '#FF0000' },
-        { id: 'adam', name: 'Adam', portrait: portraitAdamUrl, color1: '#FFFFFF', color2: '#CCCCCC' },
-        { id: 'jackie', name: 'Jackie', portrait: portraitJackieUrl, color1: '#CCCCFF', color2: '#DDA0DD' },
-        { id: 'michelle', name: 'Michelle', portrait: portraitMichelleUrl, color1: '#FFA500', color2: '#FFFF00' }
-    ];
+    const gradient = document.createElement('div');
+    gradient.className = 'bottom-gradient';
+    container.appendChild(gradient);
 
-    const menu = document.createElement('div');
-    menu.id = "pilot-select-sidebar";
-    menu.style.cssText = `position: absolute; left: 25px; top: 50%; transform: translateY(-50%); width: 260px; background: rgba(10, 10, 10, 0.45); backdrop-filter: blur(15px); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 24px; padding: 25px 15px; display: flex; flex-direction: column; z-index: 100; box-shadow: 0 15px 50px rgba(0,0,0,0.6);`;
+    const nav = document.createElement('div');
+    nav.className = 'hud-wrapper';
 
-    const title = document.createElement('div');
-    title.innerText = "PILOT ROSTER";
-    title.style.cssText = `color: white; font-family: 'Fredoka', sans-serif; text-align: center; margin-bottom: 20px; letter-spacing: 2px; font-size: 1.2rem; font-weight: 700; opacity: 0.8;`;
-    menu.appendChild(title);
+    const controls = document.createElement('div');
+    controls.className = 'hud-controls';
 
-    pilots.forEach(pilot => {
-        const tile = document.createElement('div');
-        tile.className = "pilot-tile";
-        tile.id = `tile-${pilot.id}`;
-        tile.innerHTML = `<img src="${pilot.portrait}" class="pilot-portrait"><span class="pilot-name">${pilot.name}</span>`;
+    const leftBtn = document.createElement('button');
+    leftBtn.className = 'arrow-btn';
+    leftBtn.innerHTML = '&#10094;';
+    leftBtn.onclick = () => {
+        currentPilotIndex = (currentPilotIndex - 1 + pilots.length) % pilots.length;
+        updatePilotSelection();
+    };
 
-        tile.onclick = () => {
-            document.querySelectorAll('.pilot-tile').forEach(t => { t.classList.remove('active'); t.style.borderImage = 'none'; t.style.borderColor = 'transparent'; t.style.boxShadow = 'none'; });
-            tile.classList.add('active');
-            tile.style.borderImage = `linear-gradient(to right, ${pilot.color1}, ${pilot.color2}) 1`;
-            tile.style.boxShadow = `0 0 25px -3px ${pilot.color1}, 0 0 15px -3px ${pilot.color2}`;
-            loadPreviewModel(pilot.id);
-        };
-        menu.appendChild(tile);
-    });
+    const currentNumDisplay = document.createElement('div');
+    currentNumDisplay.id = 'current-pilot-num';
+    currentNumDisplay.className = 'indicator-num';
+    currentNumDisplay.innerText = '1';
+
+    const rightBtn = document.createElement('button');
+    rightBtn.className = 'arrow-btn';
+    rightBtn.innerHTML = '&#10095;';
+    rightBtn.onclick = () => {
+        currentPilotIndex = (currentPilotIndex + 1) % pilots.length;
+        updatePilotSelection();
+    };
+
+    controls.appendChild(leftBtn);
+    controls.appendChild(currentNumDisplay);
+    controls.appendChild(rightBtn);
+    nav.appendChild(controls);
 
     const startBtn = document.createElement('button');
-    startBtn.id = 'sidebar-start-btn';
     startBtn.className = 'start-btn';
-    startBtn.innerText = "START";
+    startBtn.innerText = "SELECT";
     startBtn.onclick = () => {
-        const activeTile = document.querySelector('.pilot-tile.active');
-        if (activeTile) {
-            const selectedName = activeTile.querySelector('.pilot-name').innerText;
-            localStorage.setItem('selectedPilot', selectedName);
-            window.location.href = 'game.html';
-        }
+        localStorage.setItem('selectedPilot', pilots[currentPilotIndex].name);
+        window.location.href = 'game.html';
     };
-    menu.appendChild(startBtn);
-    container.appendChild(menu);
+    nav.appendChild(startBtn);
+
+    container.appendChild(nav);
+}
+
+function updatePilotSelection() {
+    document.getElementById('current-pilot-num').innerText = (currentPilotIndex + 1).toString();
+    loadPreviewModel(pilots[currentPilotIndex].id);
 }
 
 export function initPreview(container) {
@@ -168,11 +180,12 @@ export function initPreview(container) {
     createPilotSelectUI(container);
 
     scene = new THREE.Scene();
-    camera = new THREE.PerspectiveCamera(40, container.clientWidth / container.clientHeight, 0.1, 15000);
+    scene.background = new THREE.Color('#333333');
 
-    // LOCKED CAMERA
-    camera.position.set(-0.0967297942535286, 1.6394077121228656, -5.358637838752932);
-    camera.lookAt(0, 1.301620731987245, 0);
+    camera = new THREE.PerspectiveCamera(40, container.clientWidth / container.clientHeight, 0.1, 15000);
+    // Preserving your specific coordinates
+    camera.position.set(0.07271779979744147, 1.4540482035505606, -5.22652829437905);
+    camera.lookAt(-0.24188220020255968, 1.0890482035505586, -0.029528294379020787);
 
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
     renderer.setSize(container.clientWidth, container.clientHeight);
@@ -183,7 +196,6 @@ export function initPreview(container) {
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     container.appendChild(renderer.domElement);
 
-    // GUI INITIALIZATION
     gui = new GUI({ title: 'God Mode Tools' });
 
     const charFolder = gui.addFolder('Character Controls');
@@ -207,27 +219,21 @@ export function initPreview(container) {
     scene.add(sunLight);
 
     const lightFolder = gui.addFolder('Lighting Tweaks');
-
-    // PRESET DROPDOWN LOGIC
     lightFolder.add(settings, 'activePreset', Object.keys(lightingPresets)).name('Preset').onChange(presetName => {
         if (presetName !== 'Custom') {
             const p = lightingPresets[presetName];
-
-            // Update Settings Object
             settings.ambientInt = p.ambientInt;
             settings.sunInt = p.sunInt;
             settings.sunX = p.sunX;
             settings.sunY = p.sunY;
             settings.sunZ = p.sunZ;
 
-            // Update Actual Lights
             ambientLight.intensity = p.ambientInt;
             sunLight.intensity = p.sunInt;
             sunLight.position.set(p.sunX, p.sunY, p.sunZ);
         }
     });
 
-    // MANUAL SLIDERS (Using .listen() so they snap to the preset values)
     lightFolder.add(settings, 'ambientInt', 0, 5).name('Ambient Power').listen().onChange(v => { ambientLight.intensity = v; });
     lightFolder.add(settings, 'sunInt', 0, 10).name('Sun Power').listen().onChange(v => { sunLight.intensity = v; });
     lightFolder.add(settings, 'sunX', -50, 50).name('Sun X').listen().onChange(v => { sunLight.position.x = v; });
@@ -241,16 +247,34 @@ export function initPreview(container) {
 
     gltfLoader.load(skyboxUrl, (gltf) => {
         skyboxModel = gltf.scene;
-        skyboxModel.scale.set(500, 500, 500);
-        skyboxModel.position.set(0, -50, 0);
+        skyboxModel.scale.set(0.0002, 0.0002, 0.0002);
+        skyboxModel.position.set(0, 0, 0);
+
         skyboxModel.traverse(child => {
             if (child.isMesh) {
                 child.frustumCulled = false;
                 child.renderOrder = -1;
+
                 if (child.material) {
-                    child.material.side = THREE.BackSide;
+                    child.material.side = THREE.DoubleSide;
                     child.material.depthWrite = false;
                     child.material.fog = false;
+
+                    child.material.emissive = new THREE.Color(0xffffff);
+                    child.material.emissiveIntensity = 1.0;
+
+                    if (child.material.map) {
+                        child.material.emissiveMap = child.material.map;
+                    }
+
+                    const tex = child.material.map || child.material.emissiveMap;
+                    if (tex) {
+                        tex.colorSpace = THREE.SRGBColorSpace;
+                        tex.generateMipmaps = false;
+                        tex.minFilter = THREE.LinearFilter;
+                        tex.magFilter = THREE.LinearFilter;
+                        tex.needsUpdate = true;
+                    }
                 }
             }
         });
@@ -260,7 +284,6 @@ export function initPreview(container) {
     gltfLoader.load(desertUrl, (gltf) => {
         roomModel = gltf.scene;
         roomModel.scale.set(1, 1, 1);
-        // LOCKED MAP
         roomModel.position.set(3.6, 0.09, 65);
         roomModel.traverse(child => { if (child.isMesh) { child.receiveShadow = true; child.castShadow = true; } });
         scene.add(roomModel);
@@ -268,7 +291,6 @@ export function initPreview(container) {
 
     gltfLoader.load(vanUrl, (gltf) => {
         vanModel = gltf.scene;
-        // LOCKED VAN
         vanModel.scale.set(0.67, 0.67, 0.67);
         vanModel.position.set(1.6, 0.18, 1.5);
         vanModel.rotation.set(0, 1.08070, 0);
@@ -283,7 +305,6 @@ export function initPreview(container) {
 
     preloadAllCharacters();
 
-    // MOUSE DRAG ROTATION (Camera controls stripped)
     let isDragging = false;
     renderer.domElement.addEventListener('mousedown', () => { isDragging = true; });
     renderer.domElement.addEventListener('mouseup', () => { isDragging = false; });
@@ -305,7 +326,18 @@ export function initPreview(container) {
 
 function preloadAllCharacters() {
     const loader = new FBXLoader();
-    const characters = [{ id: 'timmy', path: pilotTimmyUrl }, { id: 'ami', path: pilotAmiUrl }, { id: 'bryce', path: pilotBryceUrl }, { id: 'adam', path: pilotAdamUrl }, { id: 'jackie', path: pilotJackieUrl }, { id: 'michelle', path: pilotMichelleUrl }];
+    const characters = pilots.map(p => {
+        let path;
+        switch (p.id) {
+            case 'timmy': path = pilotTimmyUrl; break;
+            case 'ami': path = pilotAmiUrl; break;
+            case 'bryce': path = pilotBryceUrl; break;
+            case 'adam': path = pilotAdamUrl; break;
+            case 'jackie': path = pilotJackieUrl; break;
+            case 'michelle': path = pilotMichelleUrl; break;
+        }
+        return { id: p.id, path: path };
+    });
 
     characters.forEach(char => {
         loader.load(char.path, (fbx) => {
@@ -320,13 +352,12 @@ function preloadAllCharacters() {
 
                     if (child.material) {
                         const mats = Array.isArray(child.material) ? child.material : [child.material];
-                        const newMats = []; // Creating an array for the rebuilt materials
+                        const newMats = [];
 
                         mats.forEach(m => {
                             const matName = m.name ? m.name.toLowerCase() : '';
                             const isGlass = matName.includes('glass') || matName.includes('lens') || matName.includes('goggle') || matName.includes('shade') || matName.includes('aviator');
 
-                            // THE NUCLEAR OPTION: Build a completely fresh material
                             let newMat = new THREE.MeshStandardMaterial({
                                 name: m.name,
                                 color: m.color || 0xffffff,
@@ -334,7 +365,7 @@ function preloadAllCharacters() {
                                 normalMap: m.normalMap || null,
                                 roughness: 0.8,
                                 metalness: 0.1,
-                                side: THREE.DoubleSide // Fixes hollow hair and clothes
+                                side: THREE.DoubleSide
                             });
 
                             if (isGlass) {
@@ -343,19 +374,17 @@ function preloadAllCharacters() {
                                 newMat.depthWrite = false;
                                 newMat.color.setHex(0x111111);
                             } else {
-                                newMat.transparent = false; // Forces Jackie to be completely solid
+                                newMat.transparent = false;
                                 newMat.depthWrite = true;
 
-                                // Hardware-level cutout for hair/eyelashes
                                 if (newMat.map) {
-                                    newMat.alphaTest = 0.5; // Discards invisible pixels so they don't block shadows or geometry
+                                    newMat.alphaTest = 0.5;
                                 }
                             }
 
                             newMats.push(newMat);
                         });
 
-                        // Apply the freshly built materials back to the mesh
                         child.material = newMats.length === 1 ? newMats[0] : newMats;
                     }
                 }
@@ -376,8 +405,9 @@ function preloadAllCharacters() {
                 renderer.compile(scene, camera);
                 setTimeout(() => {
                     Object.values(modelCache).forEach(model => { model.visible = false; });
-                    const targetChar = activeCharacter || 'timmy';
-                    activateModel(targetChar);
+
+                    loadPreviewModel(pilots[currentPilotIndex].id);
+
                     const checkFull = setInterval(() => {
                         if (currentProgress >= 99) {
                             clearInterval(checkFull);
@@ -405,11 +435,7 @@ function activateModel(name) {
     if (!model) return;
     model.visible = true;
 
-    settings.charRotation = 0;
-
     if (model.userData.mixer) { activeMixer = model.userData.mixer; }
-    const tile = document.getElementById(`tile-${name}`);
-    if (tile && !tile.classList.contains('active')) { tile.click(); }
 }
 
 function animate() {
@@ -424,10 +450,12 @@ function animate() {
     }
 
     if (activeCharacter && modelCache[activeCharacter]) {
-        modelCache[activeCharacter].rotation.y = settings.charRotation;
+        const offset = (activeCharacter === 'timmy') ? 0.353 : 0;
+        modelCache[activeCharacter].rotation.y = settings.charRotation + offset;
     }
 
     if (activeMixer) activeMixer.update(dt);
-    if (skyboxModel) skyboxModel.rotation.y += 0.0005;
+    if (skyboxModel) skyboxModel.rotation.y += 0.000005;
+
     renderer.render(scene, camera);
 }
