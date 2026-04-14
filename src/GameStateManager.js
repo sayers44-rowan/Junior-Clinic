@@ -1,33 +1,21 @@
 import * as THREE from 'three';
-import { StationStage, globalManager } from './StationStage.js';
+import { GameStage, globalManager } from './GameStage.js';
 
 export class GameStateManager {
-    constructor(scene, camera, renderer, pilotPath = null) {
+    constructor(scene, camera, renderer) {
         this.scene = scene;
         this.camera = camera;
         this.renderer = renderer;
-        this.pilotPath = pilotPath;
         this.currentStage = null;
         this.started = false;
 
-        // PRELOADER: Hook into the global loading manager from StationStage
+        // PRELOADER: Hook into the global loading manager from GameStage
         globalManager.onLoad = () => {
-            console.log('ALL ASSETS LOADED (PX POLISH)');
-            if (this.ui) this.ui.enableStartButton();
+            console.log('ALL ASSETS LOADED');
         };
 
-        // Instantiate StationStage early so it begins loading immediately
-        this.currentStage = new StationStage(scene, camera, renderer, 'CADET', this.pilotPath);
-    }
-
-    _preloadPilot() {
-        const loader = new FBXLoader();
-        loader.load('/assets/models/pilot_timmy.fbx', (fbx) => {
-            this._preloadedFbx = fbx;
-            console.log('PILOT PRELOADED');
-        }, undefined, (err) => {
-            console.warn('Preload failed (will retry on launch):', err);
-        });
+        // Instantiate GameStage — it reads selectedPilot from localStorage internally
+        this.currentStage = new GameStage(scene, camera, renderer);
     }
 
     start() {
@@ -41,9 +29,7 @@ export class GameStateManager {
         console.log(`LAUNCHING: ${playerName} as ${selectedChar} (${selectedModel})`);
         this.started = true;
         this.currentStage.playerName = playerName;
-        this.currentStage._uiManager = this.ui;
-        // Load the chosen model (Clean Swap handles disposal if already loaded)
-        this.currentStage.loadPilot(this.pilotPath || '/assets/models/pilot_timmy.fbx');
+
         const callsign = document.getElementById('hub-callsign');
         if (callsign) callsign.textContent = playerName.toUpperCase();
     }

@@ -4,8 +4,6 @@ import { GameStateManager } from './src/GameStateManager.js';
 class SparcGame {
     constructor() {
         this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0xffffff);
-        this.scene.fog = new THREE.FogExp2(0xffffff, 0.005);
         this.camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 500);
         this.renderer = new THREE.WebGLRenderer({ antialias: true });
         this.clock = new THREE.Clock();
@@ -18,10 +16,8 @@ class SparcGame {
         this.renderer.shadowMap.enabled = true;
         document.getElementById('game-container').appendChild(this.renderer.domElement);
 
-        const chosenPilot = localStorage.getItem('selectedPilot') || 'Timmy';
-        const pilotPath = '/assets/models/pilot_' + chosenPilot.toLowerCase() + '.fbx';
-
-        this.gameManager = new GameStateManager(this.scene, this.camera, this.renderer, pilotPath);
+        // GameStage reads selectedPilot from localStorage internally — no path needed here
+        this.gameManager = new GameStateManager(this.scene, this.camera, this.renderer);
         this.gameManager.start();
     }
 
