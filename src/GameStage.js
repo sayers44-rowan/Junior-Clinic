@@ -65,7 +65,46 @@ export class GameStage {
             armX: 0, armY: 0, armZ: 0
         };
 
+        this._skyParams = { intensity: 1.0, tint: '#ffffff' };
+        this.skyMaterials = [];
+
+        // ADDED: Dedicated parameters for the dust simulation
+        this._vfxParams = {
+            dustSize: 0.18,
+            dustOpacity: 0.39,
+            dustSpeed: 5.0
+        };
+
+        this._injectPauseUIStyles();
         this.init();
+    }
+
+    _injectPauseUIStyles() {
+        const style = document.createElement('style');
+        style.innerText = `
+            @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;700&display=swap');
+            #pause-overlay {
+                background: linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.4) 100%) !important;
+                backdrop-filter: blur(6px);
+                font-family: 'Fredoka', sans-serif !important;
+                display: none; flex-direction: column; justify-content: center; align-items: center;
+                position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 9999;
+            }
+            #pause-overlay h1 {
+                color: #fff; font-size: 4rem; text-shadow: 0 4px 15px rgba(0,0,0,1); margin-bottom: 40px; letter-spacing: 8px; font-weight: 700; text-transform: uppercase;
+            }
+            #resume-btn {
+                background: transparent !important; color: #fff !important; border: 2px solid rgba(255,255,255,0.6) !important;
+                padding: 15px 60px !important; font-size: 1.3rem !important; font-weight: bold !important; cursor: pointer;
+                border-radius: 4px; letter-spacing: 5px; transition: all 0.2s ease; text-transform: uppercase;
+                text-shadow: 0 2px 5px rgba(0,0,0,0.8); box-shadow: 0 4px 15px rgba(0,0,0,0.5) !important; outline: none;
+            }
+            #resume-btn:hover {
+                background: rgba(255,255,255,1) !important; color: #000 !important;
+                box-shadow: 0 0 25px rgba(255,255,255,0.6) !important; border-color: #ffffff !important; text-shadow: none; transform: scale(1.05);
+            }
+        `;
+        document.head.appendChild(style);
     }
 
     async init() {
@@ -80,6 +119,7 @@ export class GameStage {
         this.camera.position.set(0, 1.5, 10);
 
         this.setupLights();
+        this._setupDustVFX();
         this._loadSkybox();
         this._loadDesertMap();
         this._loadVan();
@@ -100,6 +140,53 @@ export class GameStage {
         await this.loadPilot(pilotPath);
     }
 
+    _setupDustVFX() {
+        this.dustCount = 250; // Extremely sparse and subtle
+
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(this.dustCount * 3);
+        const velocities = new Float32Array(this.dustCount * 3);
+
+        for (let i = 0; i < this.dustCount; i++) {
+            positions[i * 3] = (Math.random() - 0.5) * 100;
+            positions[i * 3 + 1] = Math.random() * 15;
+            positions[i * 3 + 2] = (Math.random() - 0.5) * 100;
+
+            // FIXED: Generates random positive AND negative drift for all axes
+            velocities[i * 3] = (Math.random() - 0.5) * 0.8;
+            velocities[i * 3 + 1] = (Math.random() - 0.5) * 0.3;
+            velocities[i * 3 + 2] = (Math.random() - 0.5) * 0.8;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('velocity', new THREE.BufferAttribute(velocities, 3));
+
+        const canvas = document.createElement('canvas');
+        canvas.width = 16; canvas.height = 16;
+        const ctx = canvas.getContext('2d');
+        const gradient = ctx.createRadialGradient(8, 8, 0, 8, 8, 8);
+        gradient.addColorStop(0, 'rgba(237, 204, 168, 1)');
+        gradient.addColorStop(0.5, 'rgba(237, 204, 168, 0.5)');
+        gradient.addColorStop(1, 'rgba(237, 204, 168, 0)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 16, 16);
+
+        const texture = new THREE.CanvasTexture(canvas);
+
+        const material = new THREE.PointsMaterial({
+            color: 0xedcca8,
+            size: this._vfxParams.dustSize,
+            map: texture,
+            transparent: true,
+            opacity: this._vfxParams.dustOpacity,
+            depthWrite: false,
+            blending: THREE.NormalBlending
+        });
+
+        this.dustParticles = new THREE.Points(geometry, material);
+        this.scene.add(this.dustParticles);
+    }
+
     _loadSkybox() {
         _gltfLoader.load('/assets/models/skybox_skydays_3.glb', (gltf) => {
             const skyboxModel = gltf.scene;
@@ -115,8 +202,8 @@ export class GameStage {
                         child.material.side = THREE.DoubleSide;
                         child.material.depthWrite = false;
                         child.material.fog = false;
-                        child.material.emissive = new THREE.Color(0xffffff);
-                        child.material.emissiveIntensity = 1.0;
+                        child.material.emissive = new THREE.Color(this._skyParams.tint);
+                        child.material.emissiveIntensity = this._skyParams.intensity;
 
                         if (child.material.map) {
                             child.material.emissiveMap = child.material.map;
@@ -130,6 +217,8 @@ export class GameStage {
                             tex.magFilter = THREE.LinearFilter;
                             tex.needsUpdate = true;
                         }
+
+                        this.skyMaterials.push(child.material);
                     }
                 }
             });
@@ -215,6 +304,24 @@ export class GameStage {
             lightFolder.add(this._lightParams, 'sunX', -50, 50).name('Sun X').listen();
             lightFolder.add(this._lightParams, 'sunY', -50, 50).name('Sun Y').listen();
             lightFolder.add(this._lightParams, 'sunZ', -50, 50).name('Sun Z').listen();
+
+            const skyFolder = this.gui.addFolder('Skybox Tuning');
+            skyFolder.add(this._skyParams, 'intensity', 0, 2, 0.01).name('Sky Brightness').onChange(v => {
+                this.skyMaterials.forEach(m => m.emissiveIntensity = v);
+            });
+            skyFolder.addColor(this._skyParams, 'tint').name('Sky Tint').onChange(v => {
+                this.skyMaterials.forEach(m => m.emissive.set(v));
+            });
+
+            // ADDED: Real-time manipulation for the dust particles
+            const vfxFolder = this.gui.addFolder('VFX Tuning');
+            vfxFolder.add(this._vfxParams, 'dustSize', 0.01, 1.0, 0.01).name('Dust Size').onChange(v => {
+                if (this.dustParticles) this.dustParticles.material.size = v;
+            });
+            vfxFolder.add(this._vfxParams, 'dustOpacity', 0.0, 1.0, 0.01).name('Dust Opacity').onChange(v => {
+                if (this.dustParticles) this.dustParticles.material.opacity = v;
+            });
+            vfxFolder.add(this._vfxParams, 'dustSpeed', 0.0, 5.0, 0.1).name('Dust Speed');
 
         } catch (e) {
             console.warn('lil-gui not available:', e);
@@ -486,6 +593,30 @@ export class GameStage {
             this.sunLight.target.position.copy(this.playerContainer.position);
         }
 
+        if (this.dustParticles) {
+            const positions = this.dustParticles.geometry.attributes.position.array;
+            const velocities = this.dustParticles.geometry.attributes.velocity.array;
+            const camPos = this.camera.position;
+            const speedMult = this._vfxParams.dustSpeed;
+
+            for (let i = 0; i < this.dustCount; i++) {
+                // Apply randomized directional drift multiplied by your GUI speed slider
+                positions[i * 3] -= velocities[i * 3] * actualDt * speedMult;
+                positions[i * 3 + 1] -= velocities[i * 3 + 1] * actualDt * speedMult;
+                positions[i * 3 + 2] -= velocities[i * 3 + 2] * actualDt * speedMult;
+
+                if (positions[i * 3] < camPos.x - 50) positions[i * 3] += 100;
+                if (positions[i * 3] > camPos.x + 50) positions[i * 3] -= 100;
+
+                if (positions[i * 3 + 1] < 0) positions[i * 3 + 1] += 15;
+                if (positions[i * 3 + 1] > 15) positions[i * 3 + 1] -= 15;
+
+                if (positions[i * 3 + 2] < camPos.z - 50) positions[i * 3 + 2] += 100;
+                if (positions[i * 3 + 2] > camPos.z + 50) positions[i * 3 + 2] -= 100;
+            }
+            this.dustParticles.geometry.attributes.position.needsUpdate = true;
+        }
+
         if (this.playerContainer && this.mapReady) {
             const rayOrigin = this.playerContainer.position.clone().add(new THREE.Vector3(0, 1, 0));
             const targets = [this.groundMesh, this.mapGroup].filter(Boolean);
@@ -651,6 +782,11 @@ export class GameStage {
                 this.renderer.domElement.requestPointerLock();
             }
         });
+
+        const overlay = document.getElementById('pause-overlay');
+        if (overlay && !overlay.querySelector('h1')) {
+            overlay.innerHTML = `<h1>PAUSED</h1>` + overlay.innerHTML;
+        }
 
         const resumeBtn = document.getElementById('resume-btn');
         if (resumeBtn) resumeBtn.addEventListener('click', () => {

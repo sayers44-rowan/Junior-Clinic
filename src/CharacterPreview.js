@@ -14,20 +14,25 @@ import pilotMichelleUrl from '../assets/models/pilot_michelle.fbx?url';
 import desertUrl from '../assets/models/desert_landscape.glb?url';
 import skyboxUrl from '../assets/models/skybox_skydays_3.glb?url';
 import vanUrl from '../assets/models/van.glb?url';
+import birdsUrl from '../assets/models/birds.glb?url';
+import singularBirdUrl from '../assets/models/4kbird.glb?url';
 
 import bgBonesUrl from '../assets/images/bg_bones.png?url';
 import bgLungsUrl from '../assets/images/bg_lungs.png?url';
 import bgCellsUrl from '../assets/images/bg_cells.png?url';
 
-let scene, camera, renderer, roomModel, skyboxModel, vanModel, gui;
+let scene, camera, renderer, roomModel, skyboxModel, vanModel, gui, dustParticles, singleBirdModel, flockModel;
 const clock = new THREE.Clock();
 let activeMixer = null;
+const envMixers = [];
 const modelCache = {};
 let activeCharacter = null;
 let modelsLoadedCount = 0;
 const TOTAL_MODELS = 6;
 let targetProgress = 0;
 let currentProgress = 0;
+let skyMaterials = [];
+const dustCount = 250;
 
 const pilots = [
     { id: 'timmy', name: 'Timmy' },
@@ -53,7 +58,23 @@ const settings = {
     activePreset: 'Preset 1',
     ambientInt: 2.745,
     sunInt: 2.3,
-    sunX: -27, sunY: 24.6, sunZ: 19.7
+    sunX: -27, sunY: 24.6, sunZ: 19.7,
+    skyIntensity: 1.0,
+    skyTint: '#ffffff',
+    dustSize: 0.15,
+    dustOpacity: 0.6,
+    dustSpeed: 1.0,
+    birdX: 1.23,
+    birdY: 2.37,
+    birdZ: 0.72,
+    birdRot: -2.39,
+    birdScale: 0.56,
+    birdAnimIndex: 1,
+    flockX: -7.4,
+    flockY: 13.9,
+    flockZ: 46.7,
+    flockRot: 1.62,
+    flockScale: 1.46
 };
 
 const fontLink = document.createElement('link');
@@ -174,6 +195,50 @@ function updatePilotSelection() {
     loadPreviewModel(pilots[currentPilotIndex].id);
 }
 
+function setupDustVFX() {
+    const geometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(dustCount * 3);
+    const velocities = new Float32Array(dustCount * 3);
+
+    for (let i = 0; i < dustCount; i++) {
+        positions[i * 3] = (Math.random() - 0.5) * 100;
+        positions[i * 3 + 1] = Math.random() * 15;
+        positions[i * 3 + 2] = (Math.random() - 0.5) * 100;
+
+        velocities[i * 3] = (Math.random() - 0.5) * 0.8;
+        velocities[i * 3 + 1] = (Math.random() - 0.5) * 0.3;
+        velocities[i * 3 + 2] = (Math.random() - 0.5) * 0.8;
+    }
+
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('velocity', new THREE.BufferAttribute(velocities, 3));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 16; canvas.height = 16;
+    const ctx = canvas.getContext('2d');
+    const gradient = ctx.createRadialGradient(8, 8, 0, 8, 8, 8);
+    gradient.addColorStop(0, 'rgba(237, 204, 168, 1)');
+    gradient.addColorStop(0.5, 'rgba(237, 204, 168, 0.5)');
+    gradient.addColorStop(1, 'rgba(237, 204, 168, 0)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 16, 16);
+
+    const texture = new THREE.CanvasTexture(canvas);
+
+    const material = new THREE.PointsMaterial({
+        color: 0xedcca8,
+        size: settings.dustSize,
+        map: texture,
+        transparent: true,
+        opacity: settings.dustOpacity,
+        depthWrite: false,
+        blending: THREE.NormalBlending
+    });
+
+    dustParticles = new THREE.Points(geometry, material);
+    scene.add(dustParticles);
+}
+
 export function initPreview(container) {
     if (!document.getElementById("sparc-master-loading-screen")) { document.body.appendChild(fadeUI); }
     createPilotSelectUI(container);
@@ -193,6 +258,8 @@ export function initPreview(container) {
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     container.appendChild(renderer.domElement);
+
+    setupDustVFX();
 
     gui = new GUI({ title: 'God Mode Tools' });
 
@@ -238,10 +305,79 @@ export function initPreview(container) {
     lightFolder.add(settings, 'sunY', -50, 50).name('Sun Y').listen().onChange(v => { sunLight.position.y = v; });
     lightFolder.add(settings, 'sunZ', -50, 50).name('Sun Z').listen().onChange(v => { sunLight.position.z = v; });
 
+    const skyFolder = gui.addFolder('Skybox Tuning');
+    skyFolder.add(settings, 'skyIntensity', 0, 2, 0.01).name('Sky Brightness').onChange(v => {
+        skyMaterials.forEach(m => m.emissiveIntensity = v);
+    });
+    skyFolder.addColor(settings, 'skyTint').name('Sky Tint').onChange(v => {
+        skyMaterials.forEach(m => m.emissive.set(v));
+    });
+
+    const vfxFolder = gui.addFolder('VFX Tuning');
+    vfxFolder.add(settings, 'dustSize', 0.01, 1.0, 0.01).name('Dust Size').onChange(v => {
+        if (dustParticles) dustParticles.material.size = v;
+    });
+    vfxFolder.add(settings, 'dustOpacity', 0.0, 1.0, 0.01).name('Dust Opacity').onChange(v => {
+        if (dustParticles) dustParticles.material.opacity = v;
+    });
+    vfxFolder.add(settings, 'dustSpeed', 0.0, 5.0, 0.1).name('Dust Speed');
+
+    const birdFolder = gui.addFolder('Singular Bird Tuning');
+    birdFolder.add(settings, 'birdX', -10, 10, 0.01).onChange(v => { if (singleBirdModel) singleBirdModel.position.x = v; });
+    birdFolder.add(settings, 'birdY', -5, 10, 0.01).onChange(v => { if (singleBirdModel) singleBirdModel.position.y = v; });
+    birdFolder.add(settings, 'birdZ', -10, 10, 0.01).onChange(v => { if (singleBirdModel) singleBirdModel.position.z = v; });
+    birdFolder.add(settings, 'birdRot', -Math.PI, Math.PI, 0.01).onChange(v => { if (singleBirdModel) singleBirdModel.rotation.y = v; });
+    birdFolder.add(settings, 'birdScale', 0.1, 5, 0.01).onChange(v => { if (singleBirdModel) singleBirdModel.scale.set(v, v, v); });
+
+    const flockFolder = gui.addFolder('Flock Tuning');
+    flockFolder.add(settings, 'flockX', -500, 500, 0.1).onChange(v => { if (flockModel) flockModel.position.x = v; });
+    flockFolder.add(settings, 'flockY', -10, 150, 0.1).onChange(v => { if (flockModel) flockModel.position.y = v; });
+    flockFolder.add(settings, 'flockZ', -500, 500, 0.1).onChange(v => { if (flockModel) flockModel.position.z = v; });
+    flockFolder.add(settings, 'flockRot', -Math.PI, Math.PI, 0.01).onChange(v => { if (flockModel) flockModel.rotation.y = v; });
+    flockFolder.add(settings, 'flockScale', 0.01, 5, 0.01).onChange(v => { if (flockModel) flockModel.scale.set(v, v, v); });
+
     const dracoLoader = new DRACOLoader();
     dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
     const gltfLoader = new GLTFLoader();
     gltfLoader.setDRACOLoader(dracoLoader);
+
+    gltfLoader.load(birdsUrl, (gltf) => {
+        flockModel = gltf.scene;
+        flockModel.position.set(settings.flockX, settings.flockY, settings.flockZ);
+        flockModel.rotation.y = settings.flockRot;
+        flockModel.scale.set(settings.flockScale, settings.flockScale, settings.flockScale);
+        if (gltf.animations && gltf.animations.length > 0) {
+            const mixer = new THREE.AnimationMixer(flockModel);
+            mixer.clipAction(gltf.animations[0]).play();
+            envMixers.push(mixer);
+        }
+        scene.add(flockModel);
+    });
+
+    gltfLoader.load(singularBirdUrl, (gltf) => {
+        singleBirdModel = gltf.scene;
+        singleBirdModel.position.set(settings.birdX, settings.birdY, settings.birdZ);
+        singleBirdModel.rotation.y = settings.birdRot;
+        singleBirdModel.scale.set(settings.birdScale, settings.birdScale, settings.birdScale);
+
+        if (gltf.animations && gltf.animations.length > 0) {
+            const mixer = new THREE.AnimationMixer(singleBirdModel);
+            const initialIdx = Math.min(settings.birdAnimIndex, gltf.animations.length - 1);
+            let currentBirdAction = mixer.clipAction(gltf.animations[initialIdx]);
+            currentBirdAction.play();
+            envMixers.push(mixer);
+
+            const animOptions = {};
+            gltf.animations.forEach((a, i) => { animOptions[`Animation ${i}`] = i; });
+
+            birdFolder.add(settings, 'birdAnimIndex', animOptions).name('Select Animation').onChange(idx => {
+                currentBirdAction.stop();
+                currentBirdAction = mixer.clipAction(gltf.animations[idx]);
+                currentBirdAction.play();
+            });
+        }
+        scene.add(singleBirdModel);
+    });
 
     gltfLoader.load(skyboxUrl, (gltf) => {
         skyboxModel = gltf.scene;
@@ -258,8 +394,8 @@ export function initPreview(container) {
                     child.material.depthWrite = false;
                     child.material.fog = false;
 
-                    child.material.emissive = new THREE.Color(0xffffff);
-                    child.material.emissiveIntensity = 1.0;
+                    child.material.emissive = new THREE.Color(settings.skyTint);
+                    child.material.emissiveIntensity = settings.skyIntensity;
 
                     if (child.material.map) {
                         child.material.emissiveMap = child.material.map;
@@ -273,6 +409,8 @@ export function initPreview(container) {
                         tex.magFilter = THREE.LinearFilter;
                         tex.needsUpdate = true;
                     }
+
+                    skyMaterials.push(child.material);
                 }
             }
         });
@@ -446,6 +584,8 @@ function activateModel(name) {
 function animate() {
     requestAnimationFrame(animate);
     const dt = clock.getDelta();
+    const safeDt = Math.min(dt, 0.1);
+
     if (currentProgress < targetProgress) {
         currentProgress += 0.4;
         const textEl = document.getElementById('loading-text');
@@ -459,8 +599,34 @@ function animate() {
         modelCache[activeCharacter].rotation.y = settings.charRotation + offset;
     }
 
-    if (activeMixer) activeMixer.update(dt);
+    if (activeMixer) activeMixer.update(safeDt);
+
+    envMixers.forEach(m => m.update(safeDt));
+
     if (skyboxModel) skyboxModel.rotation.y += 0.000005;
+
+    if (dustParticles) {
+        const positions = dustParticles.geometry.attributes.position.array;
+        const velocities = dustParticles.geometry.attributes.velocity.array;
+        const camPos = camera.position;
+        const speedMult = settings.dustSpeed;
+
+        for (let i = 0; i < dustCount; i++) {
+            positions[i * 3] -= velocities[i * 3] * safeDt * speedMult;
+            positions[i * 3 + 1] -= velocities[i * 3 + 1] * safeDt * speedMult;
+            positions[i * 3 + 2] -= velocities[i * 3 + 2] * safeDt * speedMult;
+
+            if (positions[i * 3] < camPos.x - 50) positions[i * 3] += 100;
+            if (positions[i * 3] > camPos.x + 50) positions[i * 3] -= 100;
+
+            if (positions[i * 3 + 1] < 0) positions[i * 3 + 1] += 15;
+            if (positions[i * 3 + 1] > 15) positions[i * 3 + 1] -= 15;
+
+            if (positions[i * 3 + 2] < camPos.z - 50) positions[i * 3 + 2] += 100;
+            if (positions[i * 3 + 2] > camPos.z + 50) positions[i * 3 + 2] -= 100;
+        }
+        dustParticles.geometry.attributes.position.needsUpdate = true;
+    }
 
     renderer.render(scene, camera);
 }
