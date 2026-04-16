@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import GUI from 'three/examples/jsm/libs/lil-gui.module.min.js';
 
 import pilotTimmyUrl from '../assets/models/pilot_timmy.fbx?url';
@@ -21,7 +22,7 @@ import bgBonesUrl from '../assets/images/bg_bones.png?url';
 import bgLungsUrl from '../assets/images/bg_lungs.png?url';
 import bgCellsUrl from '../assets/images/bg_cells.png?url';
 
-let scene, camera, renderer, roomModel, skyboxModel, vanModel, gui, dustParticles, singleBirdModel, flockModel;
+let scene, camera, renderer, roomModel, skyboxModel, vanModel, gui, dustParticles, singleBirdModel, flockModel, orbitControls;
 const clock = new THREE.Clock();
 let activeMixer = null;
 const envMixers = [];
@@ -32,7 +33,12 @@ const TOTAL_MODELS = 6;
 let targetProgress = 0;
 let currentProgress = 0;
 let skyMaterials = [];
-const dustCount = 250;
+
+const waypoints = [];
+const waypointSpheres = [];
+let waypointLine = null;
+
+const MAX_DUST = 1000;
 
 const pilots = [
     { id: 'timmy', name: 'Timmy' },
@@ -54,16 +60,31 @@ const lightingPresets = {
 };
 
 const settings = {
+    mouseMode: 'Rotate Character',
     charRotation: 3.13,
+    charYOffset: 0.1,
     activePreset: 'Preset 1',
     ambientInt: 2.745,
     sunInt: 2.3,
     sunX: -27, sunY: 24.6, sunZ: 19.7,
     skyIntensity: 1.0,
     skyTint: '#ffffff',
-    dustSize: 0.15,
-    dustOpacity: 0.6,
+    camX: 0.0727,
+    camY: 1.4540,
+    camZ: -5.2265,
+    targetX: -0.2418,
+    targetY: 1.0890,
+    targetZ: -0.0295,
+    mapX: 6.3,
+    mapY: 0.07,
+    mapZ: 109.8,
+    mapRot: 0,
+    mapScale: 1.71,
+    dustCount: 300,
+    dustSize: 0.19,
+    dustOpacity: 0.51,
     dustSpeed: 1.0,
+    dustMaxHeight: 4.5,
     birdX: 1.23,
     birdY: 2.37,
     birdZ: 0.72,
@@ -71,10 +92,23 @@ const settings = {
     birdScale: 0.56,
     birdAnimIndex: 1,
     flockX: -7.4,
-    flockY: 13.9,
+    flockY: 7.4,
     flockZ: 46.7,
     flockRot: 1.62,
-    flockScale: 1.46
+    flockScale: 1.46,
+    loggerEnabled: false,
+    printPath: () => {
+        if (waypoints.length === 0) return console.warn("No waypoints logged.");
+        const str = waypoints.map(w => `new THREE.Vector3(${w.x.toFixed(2)}, ${w.y.toFixed(2)}, ${w.z.toFixed(2)})`).join(',\n    ');
+        console.log("[\n    " + str + "\n]");
+        alert("Path dumped to Browser Console (F12). Copy it.");
+    },
+    clearPath: () => {
+        waypoints.length = 0;
+        if (waypointLine) waypointLine.geometry.setFromPoints([]);
+        waypointSpheres.forEach(s => scene.remove(s));
+        waypointSpheres.length = 0;
+    }
 };
 
 const fontLink = document.createElement('link');
@@ -85,18 +119,12 @@ document.head.appendChild(fontLink);
 const styleSheet = document.createElement("style");
 styleSheet.innerText = `
     @keyframes barShimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
-    
     .bottom-gradient { position: absolute; bottom: 0; left: 0; width: 100vw; height: 250px; background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0) 100%); z-index: 99; pointer-events: none; }
-    
     .hud-wrapper { position: absolute; bottom: 70px; left: 46%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; z-index: 100; font-family: 'Fredoka', sans-serif; pointer-events: none; }
-    
     .hud-controls { display: flex; align-items: center; gap: 30px; margin-bottom: 10px; pointer-events: auto; }
-    
     .arrow-btn { background: none; border: none; color: rgba(255,255,255,0.4); font-size: 2.8rem; cursor: pointer; transition: all 0.2s ease; padding: 0; outline: none; text-shadow: 0 4px 10px rgba(0,0,0,0.8); }
     .arrow-btn:hover { color: #ffffff; transform: scale(1.15); text-shadow: 0 0 20px rgba(255,255,255,0.8); }
-    
     .indicator-num { color: #ffffff; font-size: 2.8rem; font-weight: 700; min-width: 50px; text-align: center; text-shadow: 0 4px 15px rgba(0,0,0,1), 0 0 20px rgba(255,255,255,0.2); }
-    
     .start-btn { background: transparent; color: #fff; border: 2px solid rgba(255,255,255,0.6); padding: 10px 40px; font-size: 1.1rem; font-weight: bold; cursor: pointer; border-radius: 4px; letter-spacing: 5px; transition: all 0.2s ease; text-transform: uppercase; text-shadow: 0 2px 5px rgba(0,0,0,0.8); box-shadow: 0 4px 15px rgba(0,0,0,0.5); pointer-events: auto; }
     .start-btn:hover { background: rgba(255,255,255,1); color: #000; text-shadow: none; box-shadow: 0 0 25px rgba(255,255,255,0.5); border-color: #ffffff; }
 `;
@@ -197,40 +225,74 @@ function updatePilotSelection() {
 
 function setupDustVFX() {
     const geometry = new THREE.BufferGeometry();
-    const positions = new Float32Array(dustCount * 3);
-    const velocities = new Float32Array(dustCount * 3);
+    const positions = new Float32Array(MAX_DUST * 3);
+    const velocities = new Float32Array(MAX_DUST * 3);
+    const phases = new Float32Array(MAX_DUST);
 
-    for (let i = 0; i < dustCount; i++) {
+    for (let i = 0; i < MAX_DUST; i++) {
         positions[i * 3] = (Math.random() - 0.5) * 100;
-        positions[i * 3 + 1] = Math.random() * 15;
+        positions[i * 3 + 1] = Math.random() * settings.dustMaxHeight;
         positions[i * 3 + 2] = (Math.random() - 0.5) * 100;
 
         velocities[i * 3] = (Math.random() - 0.5) * 0.8;
         velocities[i * 3 + 1] = (Math.random() - 0.5) * 0.3;
         velocities[i * 3 + 2] = (Math.random() - 0.5) * 0.8;
+
+        phases[i] = Math.random() * Math.PI * 2;
     }
 
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geometry.setAttribute('velocity', new THREE.BufferAttribute(velocities, 3));
+    geometry.setAttribute('phase', new THREE.BufferAttribute(phases, 1));
+    geometry.setDrawRange(0, settings.dustCount);
 
     const canvas = document.createElement('canvas');
     canvas.width = 16; canvas.height = 16;
     const ctx = canvas.getContext('2d');
     const gradient = ctx.createRadialGradient(8, 8, 0, 8, 8, 8);
-    gradient.addColorStop(0, 'rgba(237, 204, 168, 1)');
-    gradient.addColorStop(0.5, 'rgba(237, 204, 168, 0.5)');
-    gradient.addColorStop(1, 'rgba(237, 204, 168, 0)');
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+    gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.5)');
+    gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, 16, 16);
-
     const texture = new THREE.CanvasTexture(canvas);
 
-    const material = new THREE.PointsMaterial({
-        color: 0xedcca8,
-        size: settings.dustSize,
-        map: texture,
+    const dustVertexShader = `
+        attribute vec3 velocity;
+        attribute float phase;
+        varying float vAlpha;
+        uniform float time;
+        uniform float size;
+        void main() {
+            vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+            gl_PointSize = size * (10.0 / -mvPosition.z);
+            gl_Position = projectionMatrix * mvPosition;
+            vAlpha = (sin(time * 0.5 + phase) + 1.0) * 0.5;
+        }
+    `;
+
+    const dustFragmentShader = `
+        uniform sampler2D pointTexture;
+        uniform vec3 baseColor;
+        uniform float globalOpacity;
+        varying float vAlpha;
+        void main() {
+            vec4 texColor = texture2D(pointTexture, gl_PointCoord);
+            gl_FragColor = vec4(baseColor, texColor.a * vAlpha * globalOpacity);
+        }
+    `;
+
+    const material = new THREE.ShaderMaterial({
+        uniforms: {
+            time: { value: 0 },
+            pointTexture: { value: texture },
+            baseColor: { value: new THREE.Color(0xedcca8) },
+            globalOpacity: { value: settings.dustOpacity },
+            size: { value: settings.dustSize * 100.0 }
+        },
+        vertexShader: dustVertexShader,
+        fragmentShader: dustFragmentShader,
         transparent: true,
-        opacity: settings.dustOpacity,
         depthWrite: false,
         blending: THREE.NormalBlending
     });
@@ -247,24 +309,47 @@ export function initPreview(container) {
     scene.background = new THREE.Color('#333333');
 
     camera = new THREE.PerspectiveCamera(40, container.clientWidth / container.clientHeight, 0.1, 15000);
-    camera.position.set(0.07271779979744147, 1.4540482035505606, -5.22652829437905);
-    camera.lookAt(-0.24188220020255968, 1.0890482035505586, -0.029528294379020787);
+    camera.position.set(settings.camX, settings.camY, settings.camZ);
 
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     container.appendChild(renderer.domElement);
 
+    orbitControls = new OrbitControls(camera, renderer.domElement);
+    orbitControls.target.set(settings.targetX, settings.targetY, settings.targetZ);
+    orbitControls.enabled = (settings.mouseMode === 'Camera Orbit' && !settings.loggerEnabled);
+    orbitControls.update();
+
     setupDustVFX();
 
     gui = new GUI({ title: 'God Mode Tools' });
 
+    gui.add(settings, 'mouseMode', ['Camera Orbit', 'Rotate Character']).name('Left Click Action').onChange(v => {
+        if (orbitControls) orbitControls.enabled = (v === 'Camera Orbit' && !settings.loggerEnabled);
+    });
+
+    const camFolder = gui.addFolder('Camera Setup (Live Values)');
+    camFolder.add(settings, 'camX').name('Cam X').listen().disable();
+    camFolder.add(settings, 'camY').name('Cam Y').listen().disable();
+    camFolder.add(settings, 'camZ').name('Cam Z').listen().disable();
+    camFolder.add(settings, 'targetX').name('Target X').listen().disable();
+    camFolder.add(settings, 'targetY').name('Target Y').listen().disable();
+    camFolder.add(settings, 'targetZ').name('Target Z').listen().disable();
+
+    const mapFolder = gui.addFolder('Map Transform');
+    mapFolder.add(settings, 'mapX', -500, 500, 0.1).name('Map X');
+    mapFolder.add(settings, 'mapY', -10, 10, 0.01).name('Map Y');
+    mapFolder.add(settings, 'mapZ', -2000, 2000, 0.1).name('Map Z');
+    mapFolder.add(settings, 'mapRot', -Math.PI, Math.PI, 0.01).name('Map Rotation');
+    mapFolder.add(settings, 'mapScale', 0.1, 10, 0.01).name('Map Scale');
+
     const charFolder = gui.addFolder('Character Controls');
     charFolder.add(settings, 'charRotation', -Math.PI, Math.PI).name('Model Rotation').listen();
+    charFolder.add(settings, 'charYOffset', -1, 1, 0.01).name('Model Height (Y)').listen();
 
     const ambientLight = new THREE.AmbientLight(0xffeedd, settings.ambientInt);
     scene.add(ambientLight);
@@ -314,12 +399,16 @@ export function initPreview(container) {
     });
 
     const vfxFolder = gui.addFolder('VFX Tuning');
+    vfxFolder.add(settings, 'dustCount', 0, MAX_DUST, 1).name('Dust Count').onChange(v => {
+        if (dustParticles) dustParticles.geometry.setDrawRange(0, v);
+    });
     vfxFolder.add(settings, 'dustSize', 0.01, 1.0, 0.01).name('Dust Size').onChange(v => {
-        if (dustParticles) dustParticles.material.size = v;
+        if (dustParticles) dustParticles.material.uniforms.size.value = v * 100.0;
     });
     vfxFolder.add(settings, 'dustOpacity', 0.0, 1.0, 0.01).name('Dust Opacity').onChange(v => {
-        if (dustParticles) dustParticles.material.opacity = v;
+        if (dustParticles) dustParticles.material.uniforms.globalOpacity.value = v;
     });
+    vfxFolder.add(settings, 'dustMaxHeight', 1, 50, 0.5).name('Dust Max Height');
     vfxFolder.add(settings, 'dustSpeed', 0.0, 5.0, 0.1).name('Dust Speed');
 
     const birdFolder = gui.addFolder('Singular Bird Tuning');
@@ -335,6 +424,13 @@ export function initPreview(container) {
     flockFolder.add(settings, 'flockZ', -500, 500, 0.1).onChange(v => { if (flockModel) flockModel.position.z = v; });
     flockFolder.add(settings, 'flockRot', -Math.PI, Math.PI, 0.01).onChange(v => { if (flockModel) flockModel.rotation.y = v; });
     flockFolder.add(settings, 'flockScale', 0.01, 5, 0.01).onChange(v => { if (flockModel) flockModel.scale.set(v, v, v); });
+
+    const loggerFolder = gui.addFolder('Track Logger (Spline Tool)');
+    loggerFolder.add(settings, 'loggerEnabled').name('Enable Logger').onChange(v => {
+        if (orbitControls) orbitControls.enabled = (!v && settings.mouseMode === 'Camera Orbit');
+    });
+    loggerFolder.add(settings, 'clearPath').name('Clear Path');
+    loggerFolder.add(settings, 'printPath').name('Print Path to Console');
 
     const dracoLoader = new DRACOLoader();
     dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
@@ -419,8 +515,9 @@ export function initPreview(container) {
 
     gltfLoader.load(desertUrl, (gltf) => {
         roomModel = gltf.scene;
-        roomModel.scale.set(1, 1, 1);
-        roomModel.position.set(3.6, 0.09, 65);
+        roomModel.scale.set(settings.mapScale, settings.mapScale, settings.mapScale);
+        roomModel.position.set(settings.mapX, settings.mapY, settings.mapZ);
+        roomModel.rotation.y = settings.mapRot;
         roomModel.traverse(child => { if (child.isMesh) { child.receiveShadow = true; child.castShadow = true; } });
         scene.add(roomModel);
     });
@@ -442,10 +539,46 @@ export function initPreview(container) {
     preloadAllCharacters();
 
     let isDragging = false;
-    renderer.domElement.addEventListener('mousedown', () => { isDragging = true; });
+    renderer.domElement.addEventListener('mousedown', (e) => {
+        if (settings.loggerEnabled) {
+            const rect = container.getBoundingClientRect();
+            const mouse = new THREE.Vector2(
+                ((e.clientX - rect.left) / container.clientWidth) * 2 - 1,
+                -((e.clientY - rect.top) / container.clientHeight) * 2 + 1
+            );
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(mouse, camera);
+
+            if (roomModel) {
+                const intersects = raycaster.intersectObject(roomModel, true);
+                if (intersects.length > 0) {
+                    const pt = intersects[0].point;
+                    waypoints.push(pt);
+
+                    const geo = new THREE.SphereGeometry(0.3);
+                    const mat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+                    const sphere = new THREE.Mesh(geo, mat);
+                    sphere.position.copy(pt);
+                    scene.add(sphere);
+                    waypointSpheres.push(sphere);
+
+                    if (waypointLine) {
+                        waypointLine.geometry.setFromPoints(waypoints);
+                    } else {
+                        const lGeo = new THREE.BufferGeometry().setFromPoints(waypoints);
+                        const lMat = new THREE.LineBasicMaterial({ color: 0xff0000, linewidth: 3 });
+                        waypointLine = new THREE.Line(lGeo, lMat);
+                        scene.add(waypointLine);
+                    }
+                }
+            }
+            return;
+        }
+        isDragging = true;
+    });
     renderer.domElement.addEventListener('mouseup', () => { isDragging = false; });
     renderer.domElement.addEventListener('mousemove', (e) => {
-        if (isDragging) {
+        if (isDragging && !settings.loggerEnabled && settings.mouseMode === 'Rotate Character') {
             settings.charRotation += e.movementX * 0.01;
             if (settings.charRotation > Math.PI) settings.charRotation -= Math.PI * 2;
             if (settings.charRotation < -Math.PI) settings.charRotation += Math.PI * 2;
@@ -597,6 +730,23 @@ function animate() {
     if (activeCharacter && modelCache[activeCharacter]) {
         const offset = (activeCharacter === 'timmy') ? 0.353 : 0;
         modelCache[activeCharacter].rotation.y = settings.charRotation + offset;
+        modelCache[activeCharacter].position.y = settings.charYOffset;
+    }
+
+    if (roomModel) {
+        roomModel.position.set(settings.mapX, settings.mapY, settings.mapZ);
+        roomModel.rotation.y = settings.mapRot;
+        roomModel.scale.set(settings.mapScale, settings.mapScale, settings.mapScale);
+    }
+
+    if (orbitControls && settings.mouseMode === 'Camera Orbit' && !settings.loggerEnabled) {
+        orbitControls.update();
+        settings.camX = camera.position.x;
+        settings.camY = camera.position.y;
+        settings.camZ = camera.position.z;
+        settings.targetX = orbitControls.target.x;
+        settings.targetY = orbitControls.target.y;
+        settings.targetZ = orbitControls.target.z;
     }
 
     if (activeMixer) activeMixer.update(safeDt);
@@ -606,12 +756,14 @@ function animate() {
     if (skyboxModel) skyboxModel.rotation.y += 0.000005;
 
     if (dustParticles) {
+        dustParticles.material.uniforms.time.value = clock.getElapsedTime();
         const positions = dustParticles.geometry.attributes.position.array;
         const velocities = dustParticles.geometry.attributes.velocity.array;
         const camPos = camera.position;
         const speedMult = settings.dustSpeed;
+        const maxH = settings.dustMaxHeight;
 
-        for (let i = 0; i < dustCount; i++) {
+        for (let i = 0; i < MAX_DUST; i++) {
             positions[i * 3] -= velocities[i * 3] * safeDt * speedMult;
             positions[i * 3 + 1] -= velocities[i * 3 + 1] * safeDt * speedMult;
             positions[i * 3 + 2] -= velocities[i * 3 + 2] * safeDt * speedMult;
@@ -619,8 +771,8 @@ function animate() {
             if (positions[i * 3] < camPos.x - 50) positions[i * 3] += 100;
             if (positions[i * 3] > camPos.x + 50) positions[i * 3] -= 100;
 
-            if (positions[i * 3 + 1] < 0) positions[i * 3 + 1] += 15;
-            if (positions[i * 3 + 1] > 15) positions[i * 3 + 1] -= 15;
+            if (positions[i * 3 + 1] < 0) positions[i * 3 + 1] += maxH;
+            if (positions[i * 3 + 1] > maxH) positions[i * 3 + 1] -= maxH;
 
             if (positions[i * 3 + 2] < camPos.z - 50) positions[i * 3 + 2] += 100;
             if (positions[i * 3 + 2] > camPos.z + 50) positions[i * 3 + 2] -= 100;
