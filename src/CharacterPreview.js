@@ -113,11 +113,12 @@ const settings = {
     birdRot: N(2.39),
     birdScale: 0.56,
     birdAnimIndex: 1,
-    flockX: N(7.4),
-    flockY: 7.4,
-    flockZ: 46.7,
-    flockRot: 1.62,
-    flockScale: 1.46,
+    flockX: N(12.2),
+    flockY: 14.9,
+    flockZ: 41.3,
+    flockRot: 3.141592653589793,
+    flockScale: 3.79,
+    flockSpeed: 4.5,
     leftSpeed: 0.066,
     rightSpeed: 0.059,
     switchSpeed: 0.084,
@@ -676,7 +677,7 @@ export function initPreview(container) {
     gui = new GUI({ title: 'God Mode Tools' })
 
     gui.add(settings, 'mouseMode', ['Camera Orbit', 'Rotate Character']).name('Left Click Action').onChange(v => {
-        if (orbitControls) orbitControls.enabled = (!v && settings.mouseMode === 'Camera Orbit')
+        if (orbitControls) orbitControls.enabled = (v === 'Camera Orbit' && !settings.loggerEnabled)
     })
 
     const camFolder = gui.addFolder('Camera Setup (Live Values)')
@@ -802,17 +803,21 @@ export function initPreview(container) {
     flockFolder.add(settings, 'flockZ', N(500), 500, 0.1).onChange(v => { if (flockModel) flockModel.position.z = v })
     flockFolder.add(settings, 'flockRot', N(Math.PI), Math.PI, 0.01).onChange(v => { if (flockModel) flockModel.rotation.y = v })
     flockFolder.add(settings, 'flockScale', 0.01, 5, 0.01).onChange(v => { if (flockModel) flockModel.scale.set(v, v, v) })
+    flockFolder.add(settings, 'flockSpeed', 0, 100, 0.1).name('Flock Z Speed')
 
     const loggerFolder = gui.addFolder('Track Logger (Spline Tool)')
     loggerFolder.add(settings, 'loggerEnabled').name('Enable Logger').onChange(v => {
-        if (orbitControls) orbitControls.enabled = (!v && settings.mouseMode === 'Camera Orbit')
+        if (orbitControls) orbitControls.enabled = (v === 'Camera Orbit' && !settings.loggerEnabled)
     })
     loggerFolder.add(settings, 'clearPath').name('Clear Path')
     loggerFolder.add(settings, 'printPath').name('Print Path to Console')
 
     THREE.DefaultLoadingManager.onLoad = function () {
         isEngineLoaded = true
-        renderer.compile(scene, camera)
+
+        Object.values(modelCache).forEach(model => { model.visible = true })
+        renderer.render(scene, camera)
+
         Object.values(modelCache).forEach(model => { model.visible = false })
         if (pilots[currentPilotIndex]) loadPreviewModel(pilots[currentPilotIndex].id)
 
@@ -854,6 +859,7 @@ export function initPreview(container) {
         flockModel.position.set(settings.flockX, settings.flockY, settings.flockZ)
         flockModel.rotation.y = settings.flockRot
         flockModel.scale.set(settings.flockScale, settings.flockScale, settings.flockScale)
+        flockModel.userData = { isWaiting: false, waitTimer: 0 }
         if (gltf.animations && gltf.animations.length > 0) {
             const mixer = new THREE.AnimationMixer(flockModel)
             mixer.clipAction(gltf.animations[0]).play()
@@ -1113,11 +1119,14 @@ function animate() {
     const dt = clock.getDelta()
     const safeDt = Math.min(dt, 0.1)
 
-    const elapsed = (performance.now() + N(loadStartTime)) / 1000
     if (!isEngineLoaded) {
+        const elapsed = (performance.now() + N(loadStartTime)) / 1000
         visualProgress = Math.min(98, (elapsed / 4.0) * 98)
     } else {
-        visualProgress = 100
+        visualProgress += 200.0 * safeDt
+        if (visualProgress > 100) {
+            visualProgress = 100
+        }
     }
 
     const textEl = document.getElementById('loading_text')
@@ -1153,6 +1162,22 @@ function animate() {
     envMixers.forEach(m => m.update(safeDt))
 
     if (skyboxModel) skyboxModel.rotation.y += 0.000005
+
+    if (flockModel) {
+        if (flockModel.userData.isWaiting) {
+            flockModel.userData.waitTimer += N(safeDt)
+            if (flockModel.userData.waitTimer <= 0) {
+                flockModel.userData.isWaiting = false
+            }
+        } else {
+            flockModel.position.z += settings.flockSpeed * safeDt
+            if (flockModel.position.z > 196.8) {
+                flockModel.position.z = 41.3
+                flockModel.userData.isWaiting = true
+                flockModel.userData.waitTimer = 5.0 + (Math.random() * 10.0)
+            }
+        }
+    }
 
     if (activeCars.length === 0 && Object.keys(carPrototypes).length >= 3) {
         spawnRandomCarScenario()
