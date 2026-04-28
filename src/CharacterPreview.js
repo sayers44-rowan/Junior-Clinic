@@ -17,6 +17,7 @@ import skyboxUrl from '../assets/models/skybox_skydays_3.glb?url'
 import vanUrl from '../assets/models/van.glb?url'
 import birdsUrl from '../assets/models/birds.glb?url'
 import singularBirdUrl from '../assets/models/4kbird.glb?url'
+import rocketUrl from '../assets/models/rocket_low_poly.glb?url'
 
 import carJeepUrl from '../assets/models/car_jeep_wrangler_white.glb?url'
 import carSuvYUrl from '../assets/models/car_suv_yellow.glb?url'
@@ -29,10 +30,34 @@ import vanSpriteUrl from '../assets/images/van_transparent.png?url'
 import rocketSpriteUrl from '../assets/images/rocket_transparent.png?url'
 import roadTrackUrl from '../assets/images/road_transparent.png?url'
 
+import portraitAdamUrl from '../assets/images/portrait_adam.png?url'
+import portraitAmiUrl from '../assets/images/portrait_ami.png?url'
+import portraitBryceUrl from '../assets/images/portrait_bryce.png?url'
+import portraitJackieUrl from '../assets/images/portrait_jackie.png?url'
+import portraitMichelleUrl from '../assets/images/portrait_michelle.png?url'
+import portraitTimmyUrl from '../assets/images/portrait_timmy.png?url'
+import carStartUrl from '../assets/audio/car_start.mp3?url'
+import titleMusicUrl from '../assets/audio/title_music.mp3?url'
+import gpsVoiceUrl from "../assets/audio/we're_almost_there.mp3?url"
+import tickUrl from '../assets/audio/tick.mp3?url'
+import deadboltUrl from '../assets/audio/deadbolt.mp3?url'
+import cawUrl from '../assets/audio/caw.mp3?url'
+import flapUrl from '../assets/audio/bird_wings_flap.mp3?url'
+import chooseVoiceUrl from '../assets/audio/choose_your_character.mp3?url'
+
+// Preload all portrait images immediately so they are ready when the UI appears
+const portraitUrls = { adam: portraitAdamUrl, ami: portraitAmiUrl, bryce: portraitBryceUrl, jackie: portraitJackieUrl, michelle: portraitMichelleUrl, timmy: portraitTimmyUrl }
+Object.values(portraitUrls).forEach(url => { const i = new Image(); i.src = url })
+
 const N = x => x * ~0
 
-let scene, camera, renderer, roomModel, skyboxModel, vanModel, gui, dustParticles, singleBirdModel, flockModel, orbitControls
-let audioListener, engineAudioBuffer, ambientAudio
+let scene, camera, renderer, roomModel, skyboxModel, vanModel, rocketModel, gui, dustParticles, singleBirdModel, flockModel, orbitControls
+let audioListener, engineAudioBuffer, ambientAudio, startAudioBuffer, titleAudio
+let gpsVoiceBuffer, tickBuffer, deadboltBuffer, cawBuffer, flapBuffer, chooseVoiceBuffer;
+let lastBirdClick = 0;
+let gameplayAudioUnlocked = false;
+let isStartingEngine = false;
+function playSfx(buffer, vol) { if (!buffer || audioListener.context.state !== 'running') return; const a = new THREE.Audio(audioListener); a.setBuffer(buffer); a.setVolume(vol); a.play(); }
 const clock = new THREE.Clock()
 let activeMixer = null
 const envMixers = []
@@ -45,6 +70,10 @@ let isEngineLoaded = false
 let hasTriggeredFade = false
 let skyMaterials = []
 let loadStartTime = 0
+
+let uiState = 'LOADING'
+let previewContainer = null
+let selectedPortraitId = null
 
 const waypoints = []
 const waypointSpheres = []
@@ -108,10 +137,10 @@ const settings = {
     dustSpeed: 1.0,
     dustMaxHeight: 4.5,
     birdX: 1.23,
-    birdY: 2.37,
+    birdY: 2.25,
     birdZ: 0.72,
-    birdRot: N(2.39),
-    birdScale: 0.56,
+    birdRot: -2.39,
+    birdScale: 0.26,
     birdAnimIndex: 1,
     flockX: N(12.2),
     flockY: 14.9,
@@ -123,6 +152,16 @@ const settings = {
     rightSpeed: 0.059,
     switchSpeed: 0.084,
     loggerEnabled: false,
+    uiOffsetX: -70,
+    uiOffsetY: -13,
+    uiScale: 0.79,
+    rocketX: -73.7,
+    rocketY: 15.7,
+    rocketZ: 500,
+    rocketRotX: 0.08,
+    rocketRotY: 2.7,
+    rocketRotZ: 0.77,
+    rocketScale: 26.66,
     resetTraffic: () => {
         settings.leftSpeed = 0.066
         settings.rightSpeed = 0.059
@@ -166,11 +205,11 @@ const settings = {
         carSettings.truck.trailZ = N(1.2)
         carSettings.truck.trailY = 0.2
         carSettings.truck.wheelWidth = 0.7
-        carSettings.truck.trailSpread = 0.8
-        carSettings.truck.trailSize = 0.8
+        carSettings.truck.trailSpread = 0.5
+        carSettings.truck.trailSize = 1.4
         carSettings.truck.trailLifetime = 0.3
         carSettings.truck.trailCount = 500
-        carSettings.truck.trailOpacity = 0.045
+        carSettings.truck.trailOpacity = 0.08
         carSettings.truck.trailColor = '#5c5c5c'
 
         if (gui) gui.controllersRecursive().forEach(c => c.updateDisplay())
@@ -206,7 +245,7 @@ const settings = {
 const carSettings = {
     jeep: { scale: 0.77, rotY: 0, offsetX: 0, offsetY: 0.96, offsetZ: 0, trailZ: N(3.0), trailY: N(1.0), wheelWidth: 1.2, trailSpread: 0.8, trailSize: 0.8, trailLifetime: 0.3, trailCount: 500, trailOpacity: 0.02, trailColor: '#dcd0c2' },
     suvy: { scale: 1.3, rotY: 0, offsetX: 0, offsetY: 0.36, offsetZ: 0, trailZ: N(0.9), trailY: N(0.2), wheelWidth: 0.4, trailSpread: 0.8, trailSize: 0.8, trailLifetime: 0.3, trailCount: 500, trailOpacity: 0.02, trailColor: '#ece9dd' },
-    truck: { scale: 1.26, rotY: 0, offsetX: 0, offsetY: 0.03, offsetZ: 0, trailZ: N(1.2), trailY: 0.2, wheelWidth: 0.7, trailSpread: 0.8, trailSize: 0.8, trailLifetime: 0.3, trailCount: 500, trailOpacity: 0.045, trailColor: '#5c5c5c' }
+    truck: { scale: 1.26, rotY: 0, offsetX: 0, offsetY: 0.03, offsetZ: 0, trailZ: N(1.2), trailY: 0.2, wheelWidth: 0.7, trailSpread: 0.5, trailSize: 1.4, trailLifetime: 0.3, trailCount: 500, trailOpacity: 0.08, trailColor: '#5c5c5c' }
 }
 
 const fontLink = document.createElement('link')
@@ -224,122 +263,584 @@ styleSheet.innerText = `
     .indicator_num { color: #ffffff\x3B font\x2Dsize: 2.8rem\x3B font\x2Dweight: 700\x3B min\x2Dwidth: 50px\x3B text\x2Dalign: center\x3B text\x2Dshadow: 0 4px 15px rgba(0,0,0,1), 0 0 20px rgba(255,255,255,0.2)\x3B }
     .start_btn { background: transparent\x3B color: #fff\x3B border: 2px solid rgba(255,255,255,0.6)\x3B padding: 10px 40px\x3B font\x2Dsize: 1.1rem\x3B font\x2Dweight: bold\x3B cursor: pointer\x3B border\x2Dradius: 4px\x3B letter\x2Dspacing: 5px\x3B transition: all 0.2s ease\x3B text\x2Dtransform: uppercase\x3B text\x2Dshadow: 0 2px 5px rgba(0,0,0,0.8)\x3B box\x2Dshadow: 0 4px 15px rgba(0,0,0,0.5)\x3B pointer\x2Devents: auto\x3B }
     .start_btn:hover { background: rgba(255,255,255,1)\x3B color: #000\x3B text\x2Dshadow: none\x3B box\x2Dshadow: 0 0 25px rgba(255,255,255,0.5)\x3B border\x2Dcolor: #ffffff\x3B }
-    
+
+    @keyframes driftBg {
+        from { background-position-x: 0px; }
+        to   { background-position-x: -800px; }
+    }
     @keyframes vanBounce {
-        0%, 100% { transform: scaleX(\x2D1) translate3d(0px, 0px, 0px) rotate(0deg)\x3B }
-        50% { transform: scaleX(\x2D1) translate3d(0px, \x2D4px, 0px) rotate(\x2D1.5deg)\x3B }
+        0%, 100% { transform: scaleX(-1) translate3d(0px, 0px, 0px) rotate(0deg); }
+        50%       { transform: scaleX(-1) translate3d(0px, -4px, 0px) rotate(-1.5deg); }
     }
     .van_bop {
-        animation: vanBounce 0.35s infinite ease\x2Din\x2Dout\x3B
-        filter: drop\x2Dshadow(\x2D8px 12px 6px rgba(0,0,0,0.6))\x3B
-        transform\x2Dorigin: center bottom\x3B
+        animation: vanBounce 0.35s infinite ease-in-out;
+        filter: drop-shadow(-8px 12px 6px rgba(0,0,0,0.5));
+        transform-origin: center bottom;
     }
     @keyframes textPulse {
-        0%, 100% { opacity: 0.6\x3B text\x2Dshadow: 0px 2px 4px rgba(0,0,0,1)\x3B }
-        50% { opacity: 1\x3B text\x2Dshadow: 0px 0px 15px rgba(255,255,255,0.8)\x3B }
+        0%, 100% { opacity: 0.1\x3B }
+        50%       { opacity: 1\x3B }
     }
-    .loading_pulse {
-        animation: textPulse 1.5s infinite ease\x2Din\x2Dout\x3B
+    .loading_pulse { animation: textPulse 1.4s infinite ease-in-out\x3B }
+    @keyframes slideLeft {
+        0%   { transform: translateX(110vw)\x3B }
+        100% { transform: translateX(\x2D150vw)\x3B }
+    }
+@keyframes smoothDrive {
+        0%   { transform: translate3d(calc(0vw - 90px), 0, 0)\x3B }
+        100% { transform: translate3d(calc(100vw - 90px), 0, 0)\x3B }
+    }
+    @keyframes glowDrive {
+        0%   { transform: translate3d(\x2D100%, 0, 0)\x3B }
+        100% { transform: translate3d(0%, 0, 0)\x3B }
+    }
+    .px_cactus {
+        position: absolute\x3B bottom: 0\x3B width: 14px\x3B background: #5a8c4a\x3B border\x2Dradius: 4px 4px 0 0\x3B animation: slideLeft linear infinite\x3B
+    }
+    .px_cactus::before {
+        content: ''\x3B position: absolute\x3B top: 35%\x3B left: \x2D13px\x3B width: 13px\x3B height: 9px\x3B background: #5a8c4a\x3B border\x2Dradius: 4px 0 0 4px\x3B
+    }
+    .px_cactus::after {
+        content: ''\x3B position: absolute\x3B top: 25%\x3B right: \x2D13px\x3B width: 13px\x3B height: 9px\x3B background: #5a8c4a\x3B border\x2Dradius: 0 4px 4px 0\x3B
+    }
+    .px_rock {
+        position: absolute\x3B bottom: 0\x3B background: #a08060\x3B border\x2Dradius: 50% 50% 30% 30% / 60% 60% 40% 40%\x3B animation: slideLeft linear infinite\x3B
     }
     @keyframes exhaustPuff {
-        0% { transform: scale(0.5) translate3d(0, 0, 0)\x3B opacity: 0.6\x3B }
-        100% { transform: scale(2.5) translate3d(\x2D10px, \x2D5px, 0)\x3B opacity: 0\x3B }
+        0%   { transform: scale(0.4) translate3d(0,0,0)\x3B opacity: 0.7\x3B }
+        100% { transform: scale(3)   translate3d(\x2D20px,\x2D8px,0)\x3B opacity: 0\x3B }
     }
     .exhaust {
-        position: absolute\x3B
-        bottom: 10px\x3B 
-        left: \x2D5px\x3B 
-        width: 14px\x3B
-        height: 14px\x3B
-        background: #a9a9a9\x3B
-        border\x2Dradius: 50%\x3B
-        filter: blur(3px)\x3B
-        animation: exhaustPuff 0.6s infinite ease\x2Dout\x3B
-        pointer\x2Devents: none\x3B
-        z\x2Dindex: \x2D1\x3B
+        position: absolute\x3B bottom: 12px\x3B right: 100%\x3B margin\x2Dright: \x2D3px\x3B
+        width: 11px\x3B height: 11px\x3B background: #d0d0d0\x3B border\x2Dradius: 50%\x3B
+        filter: blur(2px)\x3B animation: exhaustPuff 0.55s infinite ease\x2Dout\x3B
+        pointer\x2Devents: none\x3B z\x2Dindex: \x2D1\x3B
     }
+    #sparc_portrait_bar {
+        transform: translateX(-50%) scale(0.85)\x3B
+        transform-origin: bottom center\x3B
+    }
+
 `
 document.head.appendChild(styleSheet)
 
 const fadeUI = document.createElement('div')
-fadeUI.id = "sparc_master_loading_screen"
-fadeUI.style.cssText = `position: fixed\x3B top: 0\x3B left: 0\x3B width: 100vw\x3B height: 100vh\x3B background: radial\x2Dgradient(circle at center, #2a2a2a 0%, #000000 100%)\x3B z\x2Dindex: 99999\x3B transition: opacity 1.5s ease\x2Din\x2Dout\x3B pointer\x2Devents: none\x3B overflow: hidden\x3B`
+fadeUI.id = 'sparc_master_loading_screen'
+fadeUI.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:linear-gradient(to bottom,#4facfe 0%,#87CEEB 55%,#b8d4e8 100%);z-index:99999;transition:opacity 1.5s ease-in-out;pointer-events:none;overflow:hidden;'
 
 fadeUI.innerHTML = `
-    <div style="position: absolute\x3B bottom: 40px\x3B left: 0\x3B width: 100vw\x3B height: 140px\x3B pointer\x2Devents: none\x3B">
-        <div id="loading_text" class="loading_pulse" style="position: absolute\x3B bottom: 110px\x3B width: 100%\x3B text\x2Dalign: center\x3B color: #ffffff\x3B font\x2Dsize: 1.5rem\x3B font\x2Dweight: 700\x3B letter\x2Dspacing: 3px\x3B">LOADING... 0%</div>
-        <div style="position: absolute\x3B bottom: 0\x3B left: 0\x3B width: 100vw\x3B height: 50px\x3B background: url(${roadTrackUrl}) no\x2Drepeat center bottom\x3B background\x2Dsize: 100% 100%\x3B"></div>
-        
-        <div style="position: absolute\x3B bottom: 10px\x3B left: 0\x3B width: 100vw\x3B overflow: hidden\x3B height: 4px\x3B">
-            <div id="glow_line" style="width: 100%\x3B height: 100%\x3B background: #ff7700\x3B box\x2Dshadow: 0 0 10px #ff7700, 0 0 20px #ff7700\x3B border\x2Dradius: 2px\x3B opacity: 0.8\x3B transform: translate3d(\x2D100%, 0, 0)\x3B will\x2Dchange: transform\x3B"></div>
-        </div>
-        
-        <div style="position: absolute\x3B bottom: 14px\x3B left: 0\x3B width: 100vw\x3B pointer\x2Devents: none\x3B">
-            <div id="van_mover" style="width: 100%\x3B transform: translate3d(\x2D100%, 0, 0)\x3B will\x2Dchange: transform\x3B display: flex\x3B justify\x2Dcontent: flex\x2Dend\x3B">
-                <div style="position: relative\x3B">
-                    <div class="exhaust"></div>
-                    <div class="exhaust" style="animation\x2Ddelay: 0.2s\x3B"></div>
-                    <div class="exhaust" style="animation\x2Ddelay: 0.4s\x3B"></div>
-                    <img class="van_bop" src="${vanSpriteUrl}" style="height: 80px\x3B display: block\x3B transform: scaleX(\x2D1)\x3B transform\x2Dorigin: center bottom\x3B" />
-                </div>
+    <div style="position:absolute;inset:0;animation:driftBg 22s linear infinite;background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='300'%3E%3Cellipse cx='80' cy='240' rx='110' ry='28' fill='%23d4b483' opacity='0.55'/%3E%3Cellipse cx='320' cy='255' rx='85' ry='22' fill='%23c9a96e' opacity='0.5'/%3E%3Cellipse cx='560' cy='242' rx='130' ry='30' fill='%23d4b483' opacity='0.5'/%3E%3Cellipse cx='750' cy='250' rx='70' ry='18' fill='%23c9a96e' opacity='0.45'/%3E%3Cellipse cx='160' cy='60' rx='80' ry='30' fill='white' opacity='0.5'/%3E%3Cellipse cx='200' cy='55' rx='55' ry='22' fill='white' opacity='0.5'/%3E%3Cellipse cx='500' cy='45' rx='100' ry='36' fill='white' opacity='0.45'/%3E%3Cellipse cx='545' cy='40' rx='65' ry='24' fill='white' opacity='0.45'/%3E%3C/svg%3E\");background-repeat:repeat-x;background-size:800px 300px;background-position:bottom;pointer-events:none;"></div>
+    <div style="position:absolute;bottom:0;left:0;width:100vw;height:100px;background:#d4b878;z-index:1;pointer-events:none;"></div>
+    <div style="position:absolute;bottom:99px;left:0;width:100vw;height:80px;overflow:hidden;z-index:2;pointer-events:none;">
+        <div class="px_cactus" style="height:60px;bottom:0px;animation-duration:12s;animation-delay:0s;"></div>
+        <div class="px_rock" style="width:38px;height:20px;bottom:0px;animation-duration:12s;animation-delay:-3s;"></div>
+        <div class="px_cactus" style="height:48px;bottom:2px;animation-duration:12s;animation-delay:-6s;"></div>
+        <div class="px_rock" style="width:26px;height:14px;bottom:2px;animation-duration:12s;animation-delay:-9s;"></div>
+    </div>
+    <div id="loading_text" class="loading_pulse" style="position:absolute;bottom:200px;width:100%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.5rem;font-weight:700;letter-spacing:3px;z-index:10;text-shadow:0 2px 14px rgba(0,30,60,0.5);"><span>LOADING </span><span id="loading_pct" style="min-width:3.2ch;text-align:left;display:inline-block;">0%</span></div>
+    <div style="position:absolute;bottom:50px;left:0;width:100vw;height:50px;background:url(${roadTrackUrl}) no-repeat center bottom;background-size:100% 100%;z-index:3;"></div>
+    <div style="position:absolute;bottom:60px;left:0;width:100vw;overflow:hidden;height:4px;z-index:4;pointer-events:none;">
+        <div id="glow_line" style="width:100%;height:4px;background:#ff7700;box-shadow:0 0 8px #ff7700,0 0 20px #ff7700;border-radius:0;opacity:0.9;will-change:transform;animation:glowDrive 6s linear forwards;"></div>
+    </div>
+    <div style="position:absolute;bottom:50px;left:0;width:100vw;height:90px;pointer-events:none;z-index:5;">
+        <div id="van_mover" style="position:absolute;bottom:8px;left:0;will-change:transform;animation:smoothDrive 6s linear forwards;display:flex;align-items:flex-end;">
+            <div style="position:relative;">
+                <div class="exhaust"></div>
+                <div class="exhaust" style="animation-delay:0.18s;"></div>
+                <div class="exhaust" style="animation-delay:0.36s;"></div>
+                <img class="van_bop" src="${vanSpriteUrl}" style="height:80px;display:block;transform-origin:center bottom;" />
             </div>
         </div>
     </div>
+    <div style="position:absolute;bottom:0px;left:0;width:100vw;height:50px;overflow:hidden;z-index:6;pointer-events:none;">
+        <div class="px_cactus" style="height:36px;bottom:0px;animation-duration:9s;animation-delay:0s;"></div>
+        <div class="px_rock" style="width:32px;height:18px;bottom:0px;animation-duration:9s;animation-delay:-3s;"></div>
+        <div class="px_cactus" style="height:26px;bottom:2px;animation-duration:9s;animation-delay:-6s;"></div>
+    </div>
 `
 
-function createPilotSelectUI(container) {
+function transitionToState(newState) {
+    if (uiState === newState) return
+    uiState = newState
+
+    if (newState === 'BRIEFING') {
+        showBriefingPopup();
+    }
+
+    if (newState === 'CHARACTER_SELECT') {
+        const briefing = document.getElementById('sparc_briefing_overlay')
+        const popup = briefing ? briefing.querySelector('#sparc_gps_popup') : null
+
+        if (popup) {
+            const r = popup.getBoundingClientRect()
+
+            // Step A: fade inner content to 0 first so text doesn't reflow during shrink
+            const inner = popup.querySelector('div[style*="position:relative"]') || popup.children[popup.children.length - 1]
+            if (inner) { inner.style.transition = 'opacity 0.2s ease'; inner.style.opacity = '0' }
+
+            setTimeout(() => {
+                // Step B: pin the popup at its current screen position
+                popup.style.position = 'fixed'
+                popup.style.top = r.top + 'px'
+                popup.style.left = r.left + 'px'
+                popup.style.width = r.width + 'px'
+                popup.style.height = r.height + 'px'
+                popup.style.margin = '0'
+                popup.style.overflow = 'hidden'
+                document.body.appendChild(popup)
+
+                // Fade out the blurred overlay
+                if (briefing) {
+                    briefing.style.transition = 'opacity 0.2s ease'
+                    briefing.style.opacity = '0'
+                    setTimeout(() => { if (briefing.parentNode) briefing.parentNode.removeChild(briefing) }, 250)
+                }
+
+                // Step C: animate to top-left corner
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        popup.style.transition = 'top 0.5s cubic-bezier(0.4,0,0.2,1), left 0.5s cubic-bezier(0.4,0,0.2,1), width 0.5s cubic-bezier(0.4,0,0.2,1), height 0.5s cubic-bezier(0.4,0,0.2,1), border-radius 0.5s ease, padding 0.45s ease'
+                        popup.style.top = '16px'
+                        popup.style.left = '16px'
+                        popup.style.width = '220px'
+                        popup.style.height = '68px'
+                        popup.style.borderRadius = '10px'
+                        popup.style.padding = '10px 14px'
+
+                        // Step D: after move completes, swap content and fade it in
+                        setTimeout(() => {
+                            gameplayAudioUnlocked = true;
+                            if (ambientAudio && !ambientAudio.isPlaying) ambientAudio.play();
+
+                            popup.style.transition = 'max-height 0.4s ease, box-shadow 0.5s ease, border 0.5s ease';
+                            popup.style.height = 'auto';
+                            popup.style.maxHeight = '68px';
+                            popup.style.overflow = 'hidden';
+                            popup.style.background = '#fdf9f1';
+                            popup.style.border = '4px solid #fff';
+                            popup.style.boxShadow = '0 0 25px #ff7700';
+                            popup.style.pointerEvents = 'auto';
+                            popup.style.cursor = 'pointer';
+                            popup.id = 'sparc_objective_box';
+
+                            popup.innerHTML = `<div style="opacity:0;transition:opacity 0.25s ease;" id="sparc_obj_content"><div style="display:flex;align-items:center;gap:7px;margin-bottom:5px;"><span style="font-family:'Fredoka',sans-serif;font-size:0.65rem;font-weight:800;color:#ff7700;letter-spacing:2px;text-transform:uppercase;">Objective</span></div><div style="font-family:'Fredoka',sans-serif;font-size:1rem;color:#333;font-weight:700;">Choose your character <span style="font-size:0.7rem;color:#ff7700;">&#9660;</span></div><div id="sparc_obj_desc" style="display:block;margin-top:10px;font-size:0.9rem;color:#555;line-height:1.5;text-align:left;background:#fff;padding:12px;border-radius:8px;border:1px solid rgba(212,184,120,0.5);box-shadow:0 2px 8px rgba(0,0,0,0.05);">You are on your <strong>way to</strong> the <strong>launch site</strong> and there is 5 miles (8 km) left to go.<br><br><strong style="color:#333;">Who do you want to drive?</strong></div></div>`;
+
+                            const oldTut = document.getElementById('sparc_obj_tut');
+                            if (oldTut) oldTut.remove();
+
+                            const tutorial = document.createElement('div');
+                            tutorial.id = 'sparc_obj_tut';
+                            tutorial.style.cssText = "position:fixed;left:16px;background:#ff7700;border:3px solid #fff;color:#fff;font-family:'Fredoka',sans-serif;font-size:1.1rem;font-weight:800;padding:14px 20px;border-radius:12px;opacity:0;transition:opacity 0.5s ease;z-index:100000;display:flex;align-items:center;gap:14px;box-shadow:0 0 25px rgba(255,119,0,0.8), 0 8px 16px rgba(0,0,0,0.6);pointer-events:auto;text-transform:uppercase;letter-spacing:1px;";
+                            tutorial.innerHTML = `<div style="font-size:1.8rem;animation:textPulse 0.8s infinite;">&#8593;</div><div>Click to expand objective</div><button id="tut_close_btn" style="background:rgba(0,0,0,0.2);border:2px solid #fff;color:#fff;border-radius:50%;width:30px;height:30px;font-size:0.9rem;font-weight:bold;cursor:pointer;display:flex;align-items:center;justify-content:center;margin-left:10px;transition:all 0.2s;">X</button>`;
+                            document.body.appendChild(tutorial);
+
+                            const ro = new ResizeObserver(() => {
+                                if (!document.getElementById('sparc_obj_tut')) { ro.disconnect(); return; }
+                                const rect = popup.getBoundingClientRect();
+                                tutorial.style.top = (rect.bottom + 12) + 'px';
+                            });
+                            ro.observe(popup);
+
+                            popup.onclick = () => { popup.style.maxHeight = popup.style.maxHeight === '68px' ? '300px' : '68px'; };
+
+                            requestAnimationFrame(() => {
+                                const oc = document.getElementById('sparc_obj_content');
+                                if (oc) oc.style.opacity = '1';
+                            });
+
+                            setTimeout(() => {
+                                popup.style.boxShadow = '0 12px 30px rgba(0,0,0,0.5)';
+                                popup.style.border = '4px solid #d4b878';
+                                tutorial.style.opacity = '1';
+                            }, 1000);
+
+                            document.getElementById('tut_close_btn').onclick = (e) => {
+                                e.stopPropagation();
+                                tutorial.style.opacity = '0';
+                                setTimeout(() => { if (tutorial.parentNode) tutorial.remove(); ro.disconnect(); }, 500);
+                            };
+                        }, 520)
+                    })
+                })
+            }, 220)
+        }
+        if (previewContainer) showCharacterSelectUI(previewContainer)
+    }
+}
+
+function showBriefingPopup() {
+    const overlay = document.createElement('div')
+    overlay.id = 'sparc_briefing_overlay'
+    overlay.style.cssText = [
+        'position:fixed', 'top:0', 'left:0', 'width:100vw', 'height:100vh',
+        'background:rgba(0,0,0,0.6)', 'backdrop-filter:blur(8px)',
+        '-webkit-backdrop-filter:blur(8px)', 'z-index:99998',
+        'display:flex', 'align-items:center', 'justify-content:center',
+        'opacity:0', 'transition:opacity 0.4s ease'
+    ].join(';')
+
+    const popup = document.createElement('div')
+    popup.id = 'sparc_gps_popup'
+    popup.style.cssText = 'position:relative;box-sizing:border-box;background:#fdf9f1;border:12px solid #d4b878;border-radius:32px;padding:24px 28px 20px;max-width:480px;width:90vw;font-family:\'Fredoka\',sans-serif;color:#333;text-align:center;box-shadow:0 24px 60px rgba(0,0,0,0.8);overflow:hidden;'
+
+    const routeSvg = document.createElement('div')
+    routeSvg.style.cssText = 'margin-bottom:16px;border-radius:16px;overflow:hidden;'
+    routeSvg.innerHTML = `<svg width="100%" height="72" viewBox="0 0 400 72" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><defs><clipPath id="trailBehind"><rect x="0" y="0" width="202" height="100"/></clipPath><clipPath id="trailAhead"><rect x="202" y="0" width="200" height="100"/></clipPath></defs><rect width="400" height="72" fill="#e8d4b4" rx="10"/><path d="M 30 52 C 100 10, 180 65, 250 32 C 310 8, 360 45, 380 36" stroke="#111111" stroke-width="12" fill="none" stroke-linecap="round"/><path d="M 30 52 C 100 10, 180 65, 250 32 C 310 8, 360 45, 380 36" stroke="#ff7700" stroke-width="2" fill="none" stroke-linecap="round" clip-path="url(#trailBehind)"/><path d="M 30 52 C 100 10, 180 65, 250 32 C 310 8, 360 45, 380 36" stroke="#ff7700" stroke-width="2" fill="none" stroke-dasharray="8,6" stroke-linecap="round" clip-path="url(#trailAhead)"/><ellipse cx="60" cy="20" rx="8" ry="4" fill="#a08060"/><rect x="90" y="50" width="3" height="12" fill="#5a8c4a" rx="1"/><rect x="87" y="55" width="9" height="2" fill="#5a8c4a" rx="1"/><rect x="250" y="10" width="4" height="14" fill="#5a8c4a" rx="1"/><rect x="246" y="16" width="12" height="3" fill="#5a8c4a" rx="1"/><ellipse cx="320" cy="60" rx="9" ry="4" fill="#a08060"/><g transform="matrix(-1, 0, 0, 1, 405, 0)"><image href="${vanSpriteUrl}" x="180" y="20" width="45" height="45" /></g><path d="M 380 36 C 395 16, 395 0, 380 0 C 365 0, 365 16, 380 36 Z" fill="#f44336"/><circle cx="380" cy="12" r="5" fill="#7a0000"/><text x="12" y="14" font-size="9" fill="#8c8273" font-family="sans-serif" font-weight="bold">START</text><text x="360" y="14" font-size="9" fill="#f44336" font-family="sans-serif" font-weight="bold" text-anchor="end">LAUNCH SITE</text><image href="${rocketSpriteUrl}" x="362" y="38" width="32" height="32" opacity="0.85" onerror="this.setAttribute('opacity', '0')" /></svg>`
+    popup.appendChild(routeSvg)
+
+    const content = document.createElement('div')
+    content.style.position = 'relative'
+    content.innerHTML = `<div style="font-size:0.75rem;font-weight:800;color:#8c8273;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;justify-content:center;gap:4px;"><svg width="12" height="16" viewBox="0 0 30 36"><path d="M 15 36 C 30 16, 30 0, 15 0 C 0 0, 0 16, 15 36 Z" fill="#f44336"/><circle cx="15" cy="12" r="5" fill="#7a0000"/></svg><span>DISTANCE TO SITE</span></div><div style="font-size:3.6rem;font-weight:800;color:#ff7700;line-height:1;margin-bottom:2px;">5 mi</div><div style="font-size:1rem;color:#8c8273;font-weight:700;margin-bottom:16px;">8 km &nbsp;·&nbsp; Desert Road</div><div style="background:#fff;border:1px solid #e8d4b4;border-radius:16px;padding:14px 18px;margin-bottom:8px;box-shadow:0 2px 8px rgba(0,0,0,0.05);font-size:1.15rem;font-weight:800;color:#333;line-height:1.4;">We're almost there! 🚀</div>`
+    popup.appendChild(content)
+
+    const tapHint = document.createElement('div')
+    tapHint.id = 'sparc_tap_hint'
+    tapHint.style.cssText = 'position:relative;width:100%;text-align:center;color:#ff7700;font-size:0.85rem;font-weight:800;letter-spacing:5px;text-transform:uppercase;animation:textPulse 1.5s infinite ease-in-out;text-shadow:0 4px 10px rgba(0,0,0,0.8);pointer-events:none;opacity:0;transition:opacity 0.4s ease;'
+    tapHint.textContent = 'TAP OR PRESS ANY KEY'
+
+    const wrapper = document.createElement('div')
+    wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:20px;'
+    wrapper.appendChild(popup)
+    wrapper.appendChild(tapHint)
+    overlay.appendChild(wrapper)
+    document.body.appendChild(overlay)
+
+    requestAnimationFrame(() => { requestAnimationFrame(() => { overlay.style.opacity = '1'; }); });
+
+    function onContinue() {
+        document.removeEventListener('keydown', onContinue);
+        overlay.removeEventListener('click', onContinue);
+        playSfx(chooseVoiceBuffer, 1.0);
+        transitionToState('CHARACTER_SELECT');
+    }
+
+    const safeDuration = (gpsVoiceBuffer && isFinite(gpsVoiceBuffer.duration)) ? (gpsVoiceBuffer.duration * 1000) : 2500;
+    const lockDelay = 700 + safeDuration; // 700ms for Iris Open + Audio Length
+
+    setTimeout(() => {
+        tapHint.style.opacity = '1';
+        document.addEventListener('keydown', onContinue, { once: true });
+        overlay.addEventListener('click', onContinue, { once: true });
+    }, lockDelay);
+}
+
+function showCharacterSelectUI(container) {
     const gradient = document.createElement('div')
     gradient.className = 'bottom_gradient'
     container.appendChild(gradient)
 
-    const nav = document.createElement('div')
-    nav.className = 'hud_wrapper'
+    const portraitOrder = [ { id: 'timmy', label: 'TIMMY' }, { id: 'adam', label: 'ADAM' }, { id: 'ami', label: 'AMI' }, { id: 'bryce', label: 'BRYCE' }, { id: 'jackie', label: 'JACKIE' }, { id: 'michelle', label: 'MICHELLE' } ]
+    const len = portraitOrder.length
+    let currentIdx = 0
+    selectedPortraitId = portraitOrder[0].id
+    loadPreviewModel(selectedPortraitId)
 
-    const controls = document.createElement('div')
-    controls.className = 'hud_controls'
-
-    const leftBtn = document.createElement('button')
-    leftBtn.className = 'arrow_btn'
-    leftBtn.innerHTML = '&#10094;'
-    leftBtn.onclick = () => {
-        currentPilotIndex = currentPilotIndex + N(1) + pilots.length
-        currentPilotIndex = currentPilotIndex % pilots.length
-        updatePilotSelection()
+    // ── Centralized start sequence ───────────────────────────────────────────
+    function startGameSequence() {
+        if (isStartingEngine) return; isStartingEngine = true;
+        if (titleAudio && titleAudio.isPlaying) { titleAudio.stop() }
+        if (startAudioBuffer && audioListener.context.state === 'running') {
+            const a = new THREE.Audio(audioListener)
+            a.setBuffer(startAudioBuffer)
+            a.setVolume(0.4)
+            a.play()
+        }
+        const pilotObj = pilots.find(p => p.id === (selectedPortraitId || pilots[0].id))
+        localStorage.setItem('selectedPilot', pilotObj ? pilotObj.name : pilots[0].name)
+        if (singleBirdModel && singleBirdModel.userData.mixer && singleBirdModel.userData.clips) {
+            const targetClip = singleBirdModel.userData.clips[2] || singleBirdModel.userData.clips[1] || singleBirdModel.userData.clips[0]
+            singleBirdModel.userData.mixer.stopAllAction()
+            singleBirdModel.userData.mixer.clipAction(targetClip).reset().play()
+            playSfx(cawBuffer, 1.0); playSfx(flapBuffer, 1.0);
+        }
+        setTimeout(() => { triggerIrisClose() }, 1200)
     }
 
-    const currentNumDisplay = document.createElement('div')
-    currentNumDisplay.id = 'current_pilot_num'
-    currentNumDisplay.className = 'indicator_num'
-    currentNumDisplay.innerText = '1'
-
-    const rightBtn = document.createElement('button')
-    rightBtn.className = 'arrow_btn'
-    rightBtn.innerHTML = '&#10095;'
-    rightBtn.onclick = () => {
-        currentPilotIndex = (currentPilotIndex + 1) % pilots.length
-        updatePilotSelection()
+    function promptStartModal() {
+        if (document.getElementById('sparc_start_modal')) return
+        const modal = document.createElement('div')
+        modal.id = 'sparc_start_modal'
+        modal.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.8);z-index:999999;display:flex;align-items:center;justify-content:center;'
+        modal.innerHTML = `<div style="background:#fdf9f1;border:4px solid #d4b878;border-radius:16px;padding:30px 40px;text-align:center;box-shadow:0 24px 60px rgba(0,0,0,0.8);"><h2 style="font-family:'Fredoka',sans-serif;color:#333;margin:0 0 20px 0;font-size:1.5rem;">Select ${portraitOrder[currentIdx].label} as your character and start the car?</h2><div style="display:flex;gap:20px;justify-content:center;"><button id="sparc_modal_yes" style="background:#2e7d32;color:#fff;border:none;padding:10px 30px;font-family:'Fredoka',sans-serif;font-size:1.2rem;font-weight:700;border-radius:8px;cursor:pointer;">YES</button><button id="sparc_modal_no" style="background:#d32f2f;color:#fff;border:none;padding:10px 30px;font-family:'Fredoka',sans-serif;font-size:1.2rem;font-weight:700;border-radius:8px;cursor:pointer;">NO</button></div></div>`
+        document.body.appendChild(modal)
+        document.getElementById('sparc_modal_yes').onclick = () => { playSfx(tickBuffer, 0.45); document.body.removeChild(modal); startGameSequence(); }
+        document.getElementById('sparc_modal_no').onclick = () => { playSfx(tickBuffer, 0.45); document.body.removeChild(modal); }
     }
 
-    controls.appendChild(leftBtn)
-    controls.appendChild(currentNumDisplay)
-    controls.appendChild(rightBtn)
-    nav.appendChild(controls)
+    // ── Master positioned container (driven by GUI settings) ────────────────
+    const masterWrap = document.createElement('div')
+    masterWrap.id = 'sparc_carousel_master'
+    masterWrap.style.cssText = `position:absolute;left:50%;bottom:${settings.uiOffsetY}px;transform:translateX(calc(-50% + ${settings.uiOffsetX}px)) scale(${settings.uiScale});display:flex;flex-direction:column;align-items:center;gap:20px;z-index:100;transition:opacity 0.5s ease;opacity:0;`
+    container.appendChild(masterWrap)
 
-    const startBtn = document.createElement('button')
-    startBtn.className = 'start_btn'
-    startBtn.innerText = "SELECT"
-    startBtn.onclick = () => {
-        localStorage.setItem('selectedPilot', pilots[currentPilotIndex].name)
-        window.location.href = 'game.html'
+    // ── Carousel shell ───────────────────────────────────────────────────────
+    const carouselWrap = document.createElement('div')
+    carouselWrap.id = 'sparc_carousel_wrap'
+    carouselWrap.style.cssText = 'display:flex;align-items:center;justify-content:center;'
+
+    // Left arrow
+    const arrowL = document.createElement('button')
+    arrowL.style.cssText = 'background:none;border:none;cursor:pointer;color:#fff;font-size:1.8rem;padding:0 8px;align-self:center;opacity:0.7;transition:opacity 0.15s;flex-shrink:0;z-index:10;position:relative;'
+    arrowL.innerHTML = '&#9664;'
+    arrowL.addEventListener('mouseenter', () => { arrowL.style.opacity = '1' })
+    arrowL.addEventListener('mouseleave', () => { arrowL.style.opacity = '0.7' })
+
+    // Right arrow
+    const arrowR = document.createElement('button')
+    arrowR.style.cssText = 'background:none;border:none;cursor:pointer;color:#fff;font-size:1.8rem;padding:0 8px;align-self:center;opacity:0.7;transition:opacity 0.15s;flex-shrink:0;z-index:10;position:relative;'
+    arrowR.innerHTML = '&#9654;'
+    arrowR.addEventListener('mouseenter', () => { arrowR.style.opacity = '1' })
+    arrowR.addEventListener('mouseleave', () => { arrowR.style.opacity = '0.7' })
+
+    // Slot stage — fixed size, cards are absolute children
+    const slotWrap = document.createElement('div')
+    slotWrap.style.cssText = 'position:relative;width:500px;height:160px;flex-shrink:0;overflow:visible;clip-path:inset(-40px 0px -40px 0px);'
+
+    // Build all 6 cards once — never cloned, only mutated by renderCarousel
+    const cards = portraitOrder.map(p => {
+        const card = document.createElement('div')
+        card.id = `portrait_card_${p.id}`
+        card.style.cssText = [
+            'position:absolute', 'left:50%', 'bottom:0',
+            'display:flex', 'flex-direction:column', 'align-items:center',
+            'cursor:pointer',
+            'transform-origin:bottom center',
+            'will-change:transform,opacity'
+        ].join(';')
+
+        const img = document.createElement('img')
+        img.id = `portrait_img_${p.id}`
+        img.src = portraitUrls[p.id]
+        img.alt = p.label
+        img.style.cssText = 'width:90px;height:120px;object-fit:cover;object-position:top;border-radius:6px 6px 0 0;border:2px solid rgba(0,0,0,0.4);display:block;'
+
+        const nameTag = document.createElement('div')
+        nameTag.id = `portrait_tag_${p.id}`
+        nameTag.style.cssText = [
+            'width:90px', 'text-align:center',
+            "font-family:'Courier New',Courier,monospace",
+            'font-size:0.6rem', 'font-weight:bold', 'letter-spacing:3px', 'color:#ffffff',
+            'background:rgba(0,0,0,0.7)', 'padding:5px 0',
+            'border:2px solid rgba(0,0,0,0.4)',
+            'border-top:none', 'border-radius:0 0 6px 6px', 'text-transform:uppercase'
+        ].join(';')
+        nameTag.innerText = p.label
+
+        card.appendChild(img)
+        card.appendChild(nameTag)
+        slotWrap.appendChild(card)
+        return card
+    })
+
+    // Select button (appended to masterWrap below carousel)
+    const selectBtn = document.createElement('button')
+    selectBtn.style.cssText = "background:#2e7d32;border:2px solid #4caf50;color:#fff;padding:10px 30px;border-radius:8px;font-family:'Fredoka',sans-serif;font-size:1.1rem;font-weight:700;cursor:pointer;text-transform:uppercase;letter-spacing:2px;box-shadow:0 4px 12px rgba(0,0,0,0.5);transition:all 0.2s ease;"
+    selectBtn.onmouseover = () => { selectBtn.style.background = '#388e3c' }
+    selectBtn.onmouseout = () => { selectBtn.style.background = '#2e7d32' }
+    selectBtn.onclick = () => { playSfx(tickBuffer, 0.45); promptStartModal(); }
+
+    // Render carousel: mutate existing cards in place for smooth CSS transitions
+    function renderCarousel() {
+        selectBtn.innerText = 'SELECT'
+        const oldIdx = masterWrap.dataset.cIdx !== undefined ? parseInt(masterWrap.dataset.cIdx) : currentIdx
+        let dir = 0
+        if (currentIdx !== oldIdx) {
+            dir = (currentIdx - oldIdx === 1 || currentIdx - oldIdx < -1) ? 1 : -1
+        }
+        masterWrap.dataset.cIdx = currentIdx
+
+        cards.forEach((card, i) => {
+            const img = card.querySelector('img')
+            const tag = card.querySelector('div')
+
+            let rawOffset = i - currentIdx
+            while (rawOffset > 3) rawOffset -= 6
+            while (rawOffset < -2) rawOffset += 6
+
+            let offset = rawOffset
+            if (Math.abs(offset) === 3) offset = dir > 0 ? 3 : -3
+
+            const prevOffset = card.dataset.offset !== undefined ? parseInt(card.dataset.offset) : offset
+            const jumped = Math.abs(prevOffset - offset) > 1
+
+            let targetX = 0
+            let scale = 0.85
+            if (offset === 0) { targetX = 0; scale = 1.05 }
+            else if (offset === 1) { targetX = 100; scale = 0.95 }
+            else if (offset === -1) { targetX = -100; scale = 0.95 }
+            else if (offset === 2) { targetX = 190; scale = 0.85 }
+            else if (offset === -2) { targetX = -190; scale = 0.85 }
+            else if (offset === 3) { targetX = 280; scale = 0.85 }
+            else if (offset === -3) { targetX = -280; scale = 0.85 }
+
+            if (jumped) {
+                card.style.transition = 'none'
+                const startX = offset > 0 ? 280 : -280
+                card.style.transform = `translateX(calc(-50% + ${startX}px)) translateY(0px) scale(0.85)`
+                void card.offsetHeight // FORCE REFLOW — makes the teleport invisible before re-enabling transition
+            }
+
+            card.style.transition = 'transform 0.4s cubic-bezier(0.25,0.8,0.25,1), opacity 0.4s cubic-bezier(0.25,0.8,0.25,1), box-shadow 0.4s ease'
+            card.dataset.offset = String(offset)
+            card.style.transform = `translateX(calc(-50% + ${targetX}px)) translateY(${offset === 0 ? '-12px' : '0px'}) scale(${scale})`
+
+            if (offset === 0) {
+                card.style.opacity = '1'; card.style.zIndex = '5'; card.style.pointerEvents = 'none'
+                card.style.webkitMaskImage = 'none'; card.style.maskImage = 'none'
+                if (img) { img.style.boxShadow = '0 0 0 2px #fff, 0 4px 14px rgba(255,255,255,0.25)'; img.style.borderColor = '#fff' }
+                if (tag) tag.style.borderColor = '#fff'
+            } else if (Math.abs(offset) === 1) {
+                card.style.opacity = '1'; card.style.zIndex = '4'; card.style.pointerEvents = 'auto'
+                card.style.webkitMaskImage = 'none'; card.style.maskImage = 'none'
+                if (img) { img.style.boxShadow = 'none'; img.style.borderColor = 'rgba(0,0,0,0.4)' }
+                if (tag) tag.style.borderColor = 'rgba(0,0,0,0.4)'
+            } else if (Math.abs(offset) === 2) {
+                card.style.opacity = '0.6'; card.style.zIndex = '3'; card.style.pointerEvents = 'none'
+                const mask = offset < 0 ? 'linear-gradient(to right, transparent 0%, black 100%)' : 'linear-gradient(to left, transparent 0%, black 100%)'
+                card.style.webkitMaskImage = mask; card.style.maskImage = mask
+                if (img) { img.style.boxShadow = 'none'; img.style.borderColor = 'rgba(0,0,0,0.4)' }
+                if (tag) tag.style.borderColor = 'rgba(0,0,0,0.4)'
+            } else {
+                card.style.opacity = '0'; card.style.zIndex = '-1'; card.style.pointerEvents = 'none'
+                if (img) { img.style.boxShadow = 'none'; img.style.borderColor = 'rgba(0,0,0,0.4)' }
+                if (tag) tag.style.borderColor = 'rgba(0,0,0,0.4)'
+            }
+        })
+        // Re-wire click handlers
+        cards.forEach((card, i) => {
+            card.onclick = () => {
+                let rawOffset = i - currentIdx
+                while (rawOffset > 3) rawOffset -= 6
+                while (rawOffset < -2) rawOffset += 6
+                if (rawOffset === 0) return
+                playSfx(tickBuffer, 0.45);
+                currentIdx = (currentIdx + rawOffset + len) % len
+                selectedPortraitId = portraitOrder[currentIdx].id
+                loadPreviewModel(selectedPortraitId)
+                renderCarousel()
+            }
+        })
     }
-    nav.appendChild(startBtn)
 
-    container.appendChild(nav)
+    arrowL.addEventListener('click', () => {
+        playSfx(tickBuffer, 0.45);
+        currentIdx = (currentIdx - 1 + len) % len
+        selectedPortraitId = portraitOrder[currentIdx].id
+        loadPreviewModel(selectedPortraitId)
+        renderCarousel()
+    })
+    arrowR.addEventListener('click', () => {
+        playSfx(tickBuffer, 0.45);
+        currentIdx = (currentIdx + 1) % len
+        selectedPortraitId = portraitOrder[currentIdx].id
+        loadPreviewModel(selectedPortraitId)
+        renderCarousel()
+    })
+
+    renderCarousel()
+
+    carouselWrap.appendChild(arrowL)
+    carouselWrap.appendChild(slotWrap)
+    carouselWrap.appendChild(arrowR)
+    masterWrap.appendChild(carouselWrap)
+    masterWrap.appendChild(selectBtn)
+
+    // ── Key fob — fully decoupled, absolute bottom-left ──────────────────────
+    const fobWrap = document.createElement('div')
+    fobWrap.id = 'sparc_fob_wrap'
+    fobWrap.style.cssText = 'position:absolute;left:40px;bottom:40px;z-index:100;cursor:pointer;width:72px;display:flex;align-items:center;flex-direction:column;'
+
+    const fobBtn = document.createElement('button')
+    fobBtn.id = 'sparc_keyfob_btn'
+    fobBtn.style.cssText = [
+        'width:62px', 'height:110px',
+        'background:#1a1a1a',
+        'border:1px solid #222', 'border-radius:16px',
+        'cursor:pointer', 'display:flex', 'flex-direction:column',
+        'align-items:center', 'justify-content:center', 'gap:7px',
+        'transition:all 0.2s ease',
+        'box-shadow:0 2px 8px rgba(0,0,0,0.9)',
+        'position:relative', 'z-index:1'
+    ].join(';')
+    fobBtn.innerHTML = `<div style="display:flex;flex-direction:column;gap:8px;width:100%;padding:8px 0;align-items:center;"><div style="width:26px;height:26px;border-radius:50%;background:#181818;border:1px solid #333;display:flex;align-items:center;justify-content:center;box-shadow:inset 0 2px 4px rgba(0,0,0,0.8);"><svg width="12" height="12" viewBox="0 0 24 24" fill="#888"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM9 6c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9V6zm9 14H6V10h12v10zm-6-3c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2z"/></svg></div><div style="width:26px;height:26px;border-radius:50%;background:#181818;border:1px solid #333;display:flex;align-items:center;justify-content:center;box-shadow:inset 0 2px 4px rgba(0,0,0,0.8);"><svg width="12" height="12" viewBox="0 0 24 24" fill="#ccc"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6h2c0-1.66 1.34-3 3-3s3 1.34 3 3v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm0 12H6V10h12v10zm-6-3c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2z"/></svg></div><div id="fob_panic_btn" style="width:26px;height:26px;border-radius:50%;background:radial-gradient(circle at 30% 30%,#b00,#500);border:1px solid #ff3300;display:flex;align-items:center;justify-content:center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="#fff"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16zm-1-5h2v2h-2zm0-8h2v6h-2z"/></svg></div></div>`
+    fobBtn.addEventListener('mouseenter', () => {
+        fobBtn.style.boxShadow = '0 4px 12px rgba(0,0,0,0.8)'
+        fobBtn.style.borderColor = '#333'
+    })
+    fobBtn.addEventListener('mouseleave', () => {
+        fobBtn.style.boxShadow = '0 2px 8px rgba(0,0,0,0.9)'
+        fobBtn.style.borderColor = '#222'
+    })
+
+    const blade = document.createElement('div')
+    blade.id = 'sparc_blade'
+    blade.style.cssText = [
+        'opacity:0',
+        'position:absolute',
+        'left:50%',
+        'margin-left:-7px',
+        'bottom:100%',
+        'width:14px', 'height:80px',
+        'background:linear-gradient(180deg,#e8e8e8,#909090)',
+        'clip-path:polygon(50% 0%, 100% 15%, 100% 25%, 60% 30%, 100% 35%, 60% 40%, 100% 45%, 60% 50%, 100% 55%, 100% 100%, 0% 100%, 0% 15%)',
+        'transform-origin:bottom center',
+        'transform:rotate(180deg)',
+        'z-index:-1',
+        'transition:transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.1s ease'
+    ].join(';')
+
+    fobWrap.appendChild(fobBtn)
+    fobWrap.appendChild(blade)
+
+    fobWrap.addEventListener('mouseenter', () => {
+        blade.style.opacity = '1'
+        blade.style.transform = 'rotate(0deg)'
+    })
+    fobWrap.addEventListener('mouseleave', () => {
+        blade.style.opacity = '0'
+        blade.style.transform = 'rotate(180deg)'
+    })
+    fobWrap.addEventListener('click', (e) => { if (e.target.closest('#fob_panic_btn')) { promptStartModal(); } else { playSfx(deadboltBuffer, 0.25); } });
+    container.appendChild(fobWrap)
+
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            masterWrap.style.opacity = '1'
+        })
+    })
 }
 
-function updatePilotSelection() {
-    document.getElementById('current_pilot_num').innerText = (currentPilotIndex + 1).toString()
-    loadPreviewModel(pilots[currentPilotIndex].id)
+function triggerIrisClose() {
+    const iris = document.createElement('div');
+    iris.id = 'sparc_iris_close';
+    iris.style.cssText = [
+        'position:fixed', 'top:50%', 'left:50%',
+        'transform:translate(-50%,-50%)', 'width:250vmax', 'height:250vmax',
+        'border-radius:50%', 'box-shadow:0 0 0 300vmax #000',
+        'z-index:999999', 'transition:width 0.85s cubic-bezier(0.85, 0, 0.15, 1), height 0.85s cubic-bezier(0.85, 0, 0.15, 1)',
+        'pointer-events:all'
+    ].join(';');
+    document.body.appendChild(iris);
+
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            iris.style.width = '0px';
+            iris.style.height = '0px';
+        });
+    });
+
+    let p1Done = false;
+    const p1Complete = () => {
+        if (p1Done) return;
+        p1Done = true;
+        
+        setTimeout(() => {
+            window.location.href = 'game.html';
+        }, 300);
+    };
+
+    iris.addEventListener('transitionend', p1Complete, { once: true });
+    setTimeout(p1Complete, 1000);
 }
 
 function setupDustVFX() {
@@ -579,21 +1080,8 @@ function spawnCar(curve, modelId, speedSetting, startProgress) {
 export function initPreview(container) {
     if (!document.getElementById("sparc_master_loading_screen")) { document.body.appendChild(fadeUI) }
 
+    previewContainer = container
     loadStartTime = performance.now()
-    setTimeout(() => {
-        const glow = document.getElementById('glow_line')
-        const mover = document.getElementById('van_mover')
-        if (glow) {
-            glow.style.transition = 'transform 4s linear'
-            glow.style.transform = 'translate3d(\x2D2%, 0, 0)'
-        }
-        if (mover) {
-            mover.style.transition = 'transform 4s linear'
-            mover.style.transform = 'translate3d(\x2D2%, 0, 0)'
-        }
-    }, 50)
-
-    createPilotSelectUI(container)
 
     scene = new THREE.Scene()
     scene.background = new THREE.Color('#333333')
@@ -609,6 +1097,8 @@ export function initPreview(container) {
         engineAudioBuffer = buffer
     })
 
+    audioLoader.load(carStartUrl, (buffer) => { startAudioBuffer = buffer })
+
     ambientAudio = new THREE.Audio(audioListener)
     audioLoader.load(ambientSoundUrl, (buffer) => {
         ambientAudio.setBuffer(buffer)
@@ -616,14 +1106,24 @@ export function initPreview(container) {
         ambientAudio.setVolume(0.65)
     })
 
-    document.body.addEventListener('mousedown', () => {
-        if (audioListener.context.state === 'suspended') {
-            audioListener.context.resume()
-        }
-        if (ambientAudio && !ambientAudio.isPlaying) {
-            ambientAudio.play()
-        }
-    }, { once: true })
+    titleAudio = new THREE.Audio(audioListener)
+    audioLoader.load(titleMusicUrl, (buffer) => {
+        titleAudio.setBuffer(buffer)
+        titleAudio.setLoop(true)
+        titleAudio.setVolume(0.03)
+    })
+    audioLoader.load(gpsVoiceUrl, b => gpsVoiceBuffer = b);
+    audioLoader.load(tickUrl, b => tickBuffer = b);
+    audioLoader.load(deadboltUrl, b => deadboltBuffer = b);
+    audioLoader.load(cawUrl, b => cawBuffer = b);
+    audioLoader.load(flapUrl, b => flapBuffer = b);
+    audioLoader.load(chooseVoiceUrl, b => chooseVoiceBuffer = b);
+
+    document.body.addEventListener('mousedown', () => { 
+        if (audioListener.context.state === 'suspended') { 
+            audioListener.context.resume(); 
+        } 
+    }, { once: true });
 
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high\x2Dperformance" })
     renderer.setSize(container.clientWidth, container.clientHeight)
@@ -805,6 +1305,20 @@ export function initPreview(container) {
     flockFolder.add(settings, 'flockScale', 0.01, 5, 0.01).onChange(v => { if (flockModel) flockModel.scale.set(v, v, v) })
     flockFolder.add(settings, 'flockSpeed', 0, 100, 0.1).name('Flock Z Speed')
 
+    const uiFolder = gui.addFolder('UI Transform')
+    uiFolder.add(settings, 'uiOffsetX', -500, 500, 1).name('X Offset').onChange(v => { const w = document.getElementById('sparc_carousel_master'); if (w) w.style.transform = `translateX(calc(-50% + ${v}px)) scale(${settings.uiScale})` })
+    uiFolder.add(settings, 'uiOffsetY', -200, 500, 1).name('Y Offset').onChange(v => { const w = document.getElementById('sparc_carousel_master'); if (w) w.style.bottom = v + 'px' })
+    uiFolder.add(settings, 'uiScale', 0.5, 2.0, 0.01).name('Scale').onChange(v => { const w = document.getElementById('sparc_carousel_master'); if (w) w.style.transform = `translateX(calc(-50% + ${settings.uiOffsetX}px)) scale(${v})` })
+
+    const rocketFolder = gui.addFolder('Rocket Tuning')
+    rocketFolder.add(settings, 'rocketX', N(500), 500, 0.1).name('Pos X').onChange(v => { if (rocketModel) rocketModel.position.x = v })
+    rocketFolder.add(settings, 'rocketY', N(100), 500, 0.1).name('Pos Y').onChange(v => { if (rocketModel) rocketModel.position.y = v })
+    rocketFolder.add(settings, 'rocketZ', N(500), 500, 0.1).name('Pos Z').onChange(v => { if (rocketModel) rocketModel.position.z = v })
+    rocketFolder.add(settings, 'rocketRotX', N(Math.PI), Math.PI, 0.01).name('Rot X').onChange(v => { if (rocketModel) rocketModel.rotation.x = v })
+    rocketFolder.add(settings, 'rocketRotY', N(Math.PI), Math.PI, 0.01).name('Rot Y').onChange(v => { if (rocketModel) rocketModel.rotation.y = v })
+    rocketFolder.add(settings, 'rocketRotZ', N(Math.PI), Math.PI, 0.01).name('Rot Z').onChange(v => { if (rocketModel) rocketModel.rotation.z = v })
+    rocketFolder.add(settings, 'rocketScale', 0.01, 100, 0.01).name('Scale').onChange(v => { if (rocketModel) rocketModel.scale.set(v, v, v) })
+
     const loggerFolder = gui.addFolder('Track Logger (Spline Tool)')
     loggerFolder.add(settings, 'loggerEnabled').name('Enable Logger').onChange(v => {
         if (orbitControls) orbitControls.enabled = (v === 'Camera Orbit' && !settings.loggerEnabled)
@@ -820,29 +1334,6 @@ export function initPreview(container) {
 
         Object.values(modelCache).forEach(model => { model.visible = false })
         if (pilots[currentPilotIndex]) loadPreviewModel(pilots[currentPilotIndex].id)
-
-        const glow = document.getElementById('glow_line')
-        const mover = document.getElementById('van_mover')
-        if (glow) {
-            glow.style.transition = 'transform 0.5s ease\x2Dout'
-            glow.style.transform = 'translate3d(0%, 0, 0)'
-        }
-        if (mover) {
-            mover.style.transition = 'transform 0.5s ease\x2Dout'
-            mover.style.transform = 'translate3d(0%, 0, 0)'
-        }
-
-        setTimeout(() => {
-            const loaderScreen = document.getElementById("sparc_master_loading_screen")
-            if (loaderScreen) {
-                loaderScreen.style.opacity = '0'
-                setTimeout(() => {
-                    if (document.body.contains(loaderScreen)) {
-                        document.body.removeChild(loaderScreen)
-                    }
-                }, 1500)
-            }
-        }, 500)
     }
 
     const dracoLoader = new DRACOLoader()
@@ -879,6 +1370,8 @@ export function initPreview(container) {
             const initialIdx = Math.min(settings.birdAnimIndex, gltf.animations.length + N(1))
             let currentBirdAction = mixer.clipAction(gltf.animations[initialIdx])
             currentBirdAction.play()
+            singleBirdModel.userData.mixer = mixer
+            singleBirdModel.userData.clips = gltf.animations
             envMixers.push(mixer)
 
             const animOptions = {}
@@ -954,11 +1447,26 @@ export function initPreview(container) {
         scene.add(vanModel)
     })
 
+    gltfLoader.load(rocketUrl, (gltf) => {
+        rocketModel = gltf.scene
+        rocketModel.position.set(settings.rocketX, settings.rocketY, settings.rocketZ)
+        rocketModel.rotation.set(settings.rocketRotX, settings.rocketRotY, settings.rocketRotZ)
+        rocketModel.scale.set(settings.rocketScale, settings.rocketScale, settings.rocketScale)
+        rocketModel.traverse(child => {
+            if (child.isMesh) {
+                child.receiveShadow = true
+                child.castShadow = true
+            }
+        })
+        scene.add(rocketModel)
+    })
+
     setupDustVFX()
     preloadAllCharacters()
 
     let isDragging = false
     renderer.domElement.addEventListener('mousedown', (e) => {
+        if (singleBirdModel) { const rect = container.getBoundingClientRect(); const mouse = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1); const rc = new THREE.Raycaster(); rc.setFromCamera(mouse, camera); if (rc.intersectObject(singleBirdModel, true).length > 0) { const now = performance.now(); if (now - lastBirdClick > 1000) { playSfx(cawBuffer, 1.0); lastBirdClick = now; } } }
         if (settings.loggerEnabled) {
             const rect = container.getBoundingClientRect()
             const mouse = new THREE.Vector2(
@@ -1119,20 +1627,81 @@ function animate() {
     const dt = clock.getDelta()
     const safeDt = Math.min(dt, 0.1)
 
-    if (!isEngineLoaded) {
-        const elapsed = (performance.now() + N(loadStartTime)) / 1000
-        visualProgress = Math.min(98, (elapsed / 4.0) * 98)
-    } else {
-        visualProgress += 200.0 * safeDt
-        if (visualProgress > 100) {
-            visualProgress = 100
+    const elapsed = performance.now() - loadStartTime
+    let targetPct = (elapsed / 6000) * 100
+    if (!isEngineLoaded && targetPct > 99) targetPct = 99
+    visualProgress = Math.min(targetPct, 100)
+    if (visualProgress >= 100 && isEngineLoaded && !hasTriggeredFade) {
+        hasTriggeredFade = true;
+        const pctEl = document.getElementById('loading_pct');
+        if (pctEl) pctEl.textContent = '100%';
+        
+        const loadingText = document.getElementById('loading_text');
+        if (loadingText) {
+            loadingText.innerHTML = '<span style="font-size:2.2rem;color:#ff7700;animation:textPulse 1s infinite;cursor:pointer;text-shadow:0 0 15px rgba(255,119,0,0.8);pointer-events:auto;">CLICK TO START</span>';
         }
+
+        const unlockEngine = () => {
+            document.removeEventListener('mousedown', unlockEngine);
+            document.removeEventListener('keydown', unlockEngine);
+            if (audioListener.context.state === 'suspended') audioListener.context.resume();
+            if (titleAudio && !titleAudio.isPlaying) titleAudio.play();
+
+            const iris = document.createElement('div');
+            iris.id = 'sparc_intro_iris';
+            iris.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:250vmax;height:250vmax;border-radius:50%;box-shadow:0 0 0 300vmax #000;z-index:999999;transition:width 0.6s cubic-bezier(0.85, 0, 0.15, 1), height 0.6s cubic-bezier(0.85, 0, 0.15, 1);pointer-events:all;';
+            document.body.appendChild(iris);
+
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    iris.style.width = '0px';
+                    iris.style.height = '0px';
+                });
+            });
+
+            let p1Done = false;
+            const p1Complete = () => {
+                if (p1Done) return;
+                p1Done = true;
+
+                const loadingScreen = document.getElementById('sparc_master_loading_screen');
+                if (loadingScreen) loadingScreen.remove();
+
+                // 300ms cinematic blackout hold before spawning UI and opening Iris
+                setTimeout(() => {
+                    transitionToState('BRIEFING');
+                    
+                    void iris.offsetWidth; // Force reflow
+                    iris.style.transition = 'width 0.6s cubic-bezier(0.85, 0, 0.15, 1), height 0.6s cubic-bezier(0.85, 0, 0.15, 1)';
+                    iris.style.width = '250vmax';
+                    iris.style.height = '250vmax';
+
+                    let p2Done = false;
+                    const p2Complete = () => {
+                        if (p2Done) return;
+                        p2Done = true;
+                        playSfx(gpsVoiceBuffer, 1.0);
+                        iris.remove();
+                    };
+                    iris.addEventListener('transitionend', p2Complete, { once: true });
+                    setTimeout(p2Complete, 700);
+                }, 300);
+            };
+
+            iris.addEventListener('transitionend', p1Complete, { once: true });
+            setTimeout(p1Complete, 700);
+        };
+
+        document.addEventListener('mousedown', unlockEngine);
+        document.addEventListener('keydown', unlockEngine);
     }
 
-    const textEl = document.getElementById('loading_text')
-    if (textEl && visualProgress <= 100) {
-        textEl.innerText = `LOADING... ${Math.floor(visualProgress)}%`
+    const pctEl = document.getElementById('loading_pct')
+
+    if (pctEl && visualProgress <= 100) {
+        pctEl.textContent = Math.floor(visualProgress) + '%'
     }
+
 
     if (activeCharacter && modelCache[activeCharacter]) {
         const offset = (activeCharacter === 'timmy') ? 0.353 : 0
@@ -1192,21 +1761,23 @@ function animate() {
         c.progress += currentSpeed * safeDt
 
         if (c.progress >= 1.0) {
-            if (c.audio1 && c.audio1.isPlaying) c.audio1.stop()
-            if (c.audio2 && c.audio2.isPlaying) c.audio2.stop()
-            scene.remove(c.mesh)
-            if (c.trail) scene.remove(c.trail)
-            activeCars.splice(i, 1)
-            i += N(1)
-            continue
+            if (c.audio1 && c.audio1.isPlaying) c.audio1.stop();
+            if (c.audio2 && c.audio2.isPlaying) c.audio2.stop();
+            scene.remove(c.mesh);
+            if (c.trail) {
+                scene.remove(c.trail);
+                const t = c.trail;
+                requestIdleCallback(() => {
+                    t.geometry.dispose();
+                    t.material.dispose();
+                });
+            }
+            activeCars.splice(i, 1);
+            i += N(1);
+            continue;
         }
 
-        let currentVol = 0.20
-        if (c.progress > 0.8) {
-            currentVol = 0.20 * Math.max(0, (1.0 + N(c.progress)) / 0.2)
-        }
-        if (c.audio1) c.audio1.setVolume(currentVol)
-        if (c.audio2) c.audio2.setVolume(currentVol)
+        let currentVol = 0.20; if (c.progress > 0.8) { currentVol = 0.20 * Math.max(0, (1.0 + N(c.progress)) / 0.2); } const finalVol = gameplayAudioUnlocked ? currentVol : 0; if (c.audio1) c.audio1.setVolume(finalVol); if (c.audio2) c.audio2.setVolume(finalVol);
 
         if (c.progress < 0) {
             c.mesh.visible = false
