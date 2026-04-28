@@ -20,6 +20,21 @@ const lightingPresets = {
     'Custom': {}
 };
 
+const N = x => x * -1;
+
+const R_CURVE_POINTS = [
+    [N(4.33), 0.21, N(7.58)], [N(5.36), 0.21, 7.58], [N(7.13), 0.26, 31.14],
+    [N(9.43), 0.35, 50.12], [N(12.49), 0.44, 65.06], [N(16.27), 0.48, 78.83],
+    [N(20.49), 0.49, 91.57], [N(30.81), 0.49, 119.86], [N(32.66), 0.49, 126.84],
+    [N(33.11), 0.49, 129.52], [N(32.30), 0.49, 136.70], [N(31.30), 0.49, 148.53],
+    [N(31.00), 0.49, 162.77], [N(31.84), 0.49, 177.47], [N(33.76), 0.49, 197.39],
+    [N(33.51), 0.49, 201.45], [N(32.27), 0.49, 203.94], [N(30.65), 0.49, 206.08],
+    [N(28.08), 0.49, 207.56], [N(24.86), 0.49, 208.34], [N(20.80), 0.49, 208.07],
+    [14.53, 0.49, 198.03], [35.25, 0.49, 192.16]
+].map(p => new THREE.Vector3(p[0], p[1], p[2]));
+const vanCurve = new THREE.CatmullRomCurve3(R_CURVE_POINTS);
+
+
 export class GameStage {
     constructor(scene, camera, renderer) {
         this.scene = scene;
@@ -46,8 +61,13 @@ export class GameStage {
         this.mapReady = false;
         this._cullFrameCount = 0;
         this._lastMoveAngle = 0;
+        this.cinematicState = 'driving';
+        this.vanProgress = 0.0;
+        this.vanSpeed = 0.04;
+        this.vanModel = null;
+        this.rocketModel = null;
 
-        this._mapParams = { x: 3.60, y: 0.09, z: 65.00 };
+        this._mapParams = { x: 6.3, y: 0.07, z: 109.8 };
 
         this._lightParams = {
             activePreset: 'Preset 1',
@@ -123,8 +143,20 @@ export class GameStage {
         this._loadSkybox();
         this._loadDesertMap();
         this._loadVan();
+        this._loadRocket();
         this.setupInput();
         this._buildDebugGUI();
+
+        // IRIS transition (starts fully black, transitions to clear)
+        this.iris = document.createElement('div');
+        this.iris.id = 'sparc_game_iris';
+        this.iris.style.cssText = [
+            'position:fixed', 'top:50%', 'left:50%',
+            'transform:translate(-50%,-50%)', 'width:0px', 'height:0px',
+            'border-radius:50%', 'box-shadow:0 0 0 300vmax #000',
+            'z-index:999999', 'pointer-events:none'
+        ].join(';');
+        document.body.appendChild(this.iris);
 
         this.camera.near = 0.1;
         this.camera.far = 15000;
@@ -255,7 +287,25 @@ export class GameStage {
                     child.receiveShadow = true;
                 }
             });
+            this.vanModel = van;
             this.scene.add(van);
+        });
+    }
+
+    _loadRocket() {
+        _gltfLoader.load('/assets/models/rocket_low_poly.glb', (gltf) => {
+            const rocket = gltf.scene;
+            rocket.position.set(-73.7, 15.7, 500);
+            rocket.rotation.set(0.08, 2.7, 0.77);
+            rocket.scale.set(26.66, 26.66, 26.66);
+            rocket.traverse(child => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                }
+            });
+            this.rocketModel = rocket;
+            this.scene.add(rocket);
         });
     }
 
@@ -574,6 +624,28 @@ export class GameStage {
         });
     }
 
+    onAssetsLoaded() {
+        if (this.iris) {
+            void this.iris.offsetWidth;
+            this.iris.style.transition = 'width 1.5s cubic-bezier(0.25, 0.1, 0.25, 1), height 1.5s cubic-bezier(0.25, 0.1, 0.25, 1)';
+            this.iris.style.width = '300vmax';
+            this.iris.style.height = '300vmax';
+            setTimeout(() => {
+                if (this.iris && this.iris.parentNode) {
+                    this.iris.parentNode.removeChild(this.iris);
+                    this.iris = null;
+                }
+            }, 1600);
+        }
+
+        if (this.cinematicState === 'driving') {
+            if (this.playerModel) this.playerModel.visible = false;
+            this._camParams.radius = 6;
+            this._camParams.heightOffset = 2.5;
+            this._camParams.pitchOffset = 1.5;
+        }
+    }
+
     update(dt) {
         if (this.isPaused) return;
 
@@ -638,18 +710,49 @@ export class GameStage {
                 this.isOnGround = false;
             }
 
-            if (!this.isOnGround && this.mapReady) {
+            if (!this.isOnGround && this.mapReady && this.cinematicState === 'playing') {
                 this.velocityY -= 28 * actualDt;
                 this.playerContainer.position.y += this.velocityY * actualDt;
             }
         }
 
-        if (!this.cursorUnlocked) {
-            this.handleMovement(actualDt);
-        } else {
-            if (this.playerModel && this._lastMoveAngle !== undefined) {
-                this.playerModel.rotation.y = this._lastMoveAngle + this._charParams.idleRotationOffset;
+        if (this.cinematicState === 'driving' && this.vanModel) {
+            this.vanProgress += this.vanSpeed * actualDt;
+            if (this.vanProgress >= 1.0) {
+                this.vanProgress = 1.0;
+                this.cinematicState = 'exiting';
+                setTimeout(() => {
+                    this.cinematicState = 'playing';
+                    if (this.playerModel) this.playerModel.visible = true;
+                    // Place character next to the van and offset camera back
+                    this.playerContainer.position.copy(this.vanModel.position);
+                    this.playerContainer.position.x -= 2.0;
+                    this.playerContainer.position.y = 1.5;
+                    this._camParams.radius = 2.5;
+                    this._camParams.heightOffset = 1.4;
+                    this._camParams.pitchOffset = 1.0;
+                }, 1000);
             }
+
+            const p1 = vanCurve.getPointAt(this.vanProgress);
+            this.vanModel.position.copy(p1);
+            
+            const p2 = vanCurve.getPointAt(Math.min(1.0, this.vanProgress + 0.01));
+            this.vanModel.lookAt(p2);
+
+            this.playerContainer.position.copy(p1);
+        }
+
+        if (this.cinematicState === 'playing') {
+            if (!this.cursorUnlocked) {
+                this.handleMovement(actualDt);
+            } else {
+                if (this.playerModel && this._lastMoveAngle !== undefined) {
+                    this.playerModel.rotation.y = this._lastMoveAngle + this._charParams.idleRotationOffset;
+                }
+                if (this.isOnGround) this._playAction(this.idleAction);
+            }
+        } else {
             if (this.isOnGround) this._playAction(this.idleAction);
         }
 

@@ -12,6 +12,9 @@ export class GameStateManager {
         // PRELOADER: Hook into the global loading manager from GameStage
         globalManager.onLoad = () => {
             console.log('ALL ASSETS LOADED');
+            if (this.currentStage && this.currentStage.onAssetsLoaded) {
+                this.currentStage.onAssetsLoaded();
+            }
         };
 
         // Instantiate GameStage — it reads selectedPilot from localStorage internally
