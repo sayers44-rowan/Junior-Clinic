@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 import json
 
-from .database import get_db, init_db, Conversation, Message, engine
+from .database import get_db, init_db, Conversation, Message, Player, engine
 from .llm_client import llm_client
 
 app = FastAPI(title="AI Chatbot API")
@@ -55,11 +55,48 @@ def create_conversation(title: str = "New Chat", db: Session = Depends(get_db)):
     db.refresh(new_conv)
     return new_conv
 
+# Player Endpoints
+@app.post("/player")
+def save_player(username: str, current_stage: str = "LOBBY", outfit_color: str = "default", player_data: str = "{}", db: Session = Depends(get_db)):
+    player = db.query(Player).filter(Player.username == username).first()
+    if player:
+        player.current_stage = current_stage
+        player.outfit_color = outfit_color
+        player.player_data = player_data
+    else:
+        player = Player(username=username, current_stage=current_stage, outfit_color=outfit_color, player_data=player_data)
+        db.add(player)
+    db.commit()
+    db.refresh(player)
+    return player
+
+@app.get("/player/{username}")
+def get_player(username: str, db: Session = Depends(get_db)):
+    player = db.query(Player).filter(Player.username == username).first()
+    if not player:
+        raise HTTPException(status_code=404, detail="Player not found")
+    return player
+
+@app.patch("/player/{username}/state")
+def update_player_state(username: str, current_stage: Optional[str] = None, outfit_color: Optional[str] = None, player_data: Optional[str] = None, db: Session = Depends(get_db)):
+    player = db.query(Player).filter(Player.username == username).first()
+    if not player:
+        raise HTTPException(status_code=404, detail="Player not found")
+    
+    if current_stage: player.current_stage = current_stage
+    if outfit_color: player.outfit_color = outfit_color
+    if player_data: player.player_data = player_data
+    
+    db.commit()
+    db.refresh(player)
+    return player
+
 @app.post("/chat/{conversation_id}")
 async def chat(
     conversation_id: int, 
     prompt: str, 
     model: str = "deepseek-ai/deepseek-v3.2",
+    username: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     # 1. Fetch conversation
@@ -77,14 +114,25 @@ async def chat(
     messages = [{"role": "system", "content": "You are a helpful, premium AI assistant. Always respond in English unless specifically asked otherwise."}]
     messages.extend([{"role": m.role, "content": m.content} for m in history])
 
-    # 4. Stream response
+    # 4. Fetch player context if username provided
+    player_context = None
+    if username:
+        player = db.query(Player).filter(Player.username == username).first()
+        if player:
+            player_context = {
+                "username": player.username,
+                "current_stage": player.current_stage,
+                "outfit_color": player.outfit_color
+            }
+
+    # 5. Stream response
     async def event_generator():
         full_response = ""
-        for chunk in llm_client.stream_completion(model, messages):
+        for chunk in llm_client.stream_completion(model, messages, player_context=player_context):
             full_response += chunk
             yield chunk
         
-        # 5. After streaming finishes, save assistant message
+        # 6. After streaming finishes, save assistant message
         # We need a new session or use the existing one carefully
         # Note: In a real async environment, you'd use an async DB driver
         with Session(engine) as session:

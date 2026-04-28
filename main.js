@@ -5,8 +5,7 @@ class SparcGame {
     constructor() {
         this.scene = new THREE.Scene();
         this.scene.background = new THREE.Color(0xffffff);
-        this.scene.fog = new THREE.FogExp2(0xffffff, 0.005);
-        this.camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 500);
+        this.camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 10000);
         this.renderer = new THREE.WebGLRenderer({ antialias: true });
         this.clock = new THREE.Clock();
         this.init();
@@ -15,7 +14,13 @@ class SparcGame {
 
     init() {
         this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // High-DPI support (capped at 2 for performance)
         this.renderer.shadowMap.enabled = true;
+        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Smoother shadows
+        this.renderer.toneMapping = THREE.ACESFilmicToneMapping; // Cinematic lighting
+        this.renderer.toneMappingExposure = 0.9;
+        this.renderer.outputColorSpace = THREE.SRGBColorSpace; // Correct colors
+
         document.getElementById('app').appendChild(this.renderer.domElement);
         this.gameManager = new GameStateManager(this.scene, this.camera, this.renderer);
         this.gameManager.start();

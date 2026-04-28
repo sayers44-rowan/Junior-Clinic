@@ -4,10 +4,11 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 export class StationStage {
-    constructor(scene, camera, renderer) {
+    constructor(scene, camera, renderer, gameStateManager) {
         this.scene = scene;
         this.camera = camera;
         this.renderer = renderer;
+        this.gameStateManager = gameStateManager;
 
         // State
         this.player = null;
@@ -15,7 +16,7 @@ export class StationStage {
         this.animations = {};
         this.currentAction = null;
         this.radio = null;
-        this.mirror = null;
+        this.wardrobe = null;
         this.door = null;
         this.rocketLight = null;
 
@@ -151,9 +152,16 @@ export class StationStage {
         this.controls = new OrbitControls(this.camera, this.renderer.domElement);
         this.controls.enablePan = false; this.controls.enableZoom = true;
         this.controls.enableRotate = true;
+        this.controls.enableDamping = true;
+        this.controls.dampingFactor = 0.05;
         this.controls.minDistance = 2.5; this.controls.maxDistance = 2.5;
-        this.controls.mouseButtons = { LEFT: null, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
-        this.controls.target.set(0, 1, 0);
+        this.controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
+
+        // Anti-Clipping Constraints
+        this.controls.maxPolarAngle = Math.PI / 2.1; // Limit downward look to prevent floor clipping
+        this.controls.minPolarAngle = 0.1;           // Prevent flipping at the top
+        this.controls.target.set(0, 1.4, 0);         // Aim at character's upper body, not feet
+
         this.controls.update();
         this.controls.enabled = false;
     }
@@ -364,36 +372,89 @@ export class StationStage {
 
         this.collisionObjects.push({ type: 'soft-box', x: 0, z: -5.85, w: 2.5, d: 0.5, h: 3.0 });
 
-        const mGrp = new THREE.Group();
-        this.mirror = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.9), new THREE.MeshStandardMaterial({ color: 0xC0C0C0, metalness: 0.9, roughness: 0.1, transparent: true, opacity: 0.9 }));
-        this.mirror.position.z = 0.05;
-        mGrp.add(this.mirror); mGrp.position.set(-7.4, 1.7, 2); mGrp.rotation.y = Math.PI / 2;
-        this.scene.add(mGrp);
+        // --- NEW WARDROBE DRESSER (Metric Reference Matching) ---
+        this.wardrobe = new THREE.Group();
+        const wMainMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 }); // White Semi-Gloss
+        const goldMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 1.0, roughness: 0.1 }); // Gold Hardware
+
+        // Body
+        const wardrobeBody = new THREE.Mesh(new THREE.BoxGeometry(1.6, 3.2, 0.8), wMainMat);
+        wardrobeBody.position.y = 1.6; wardrobeBody.castShadow = true; this.wardrobe.add(wardrobeBody);
+
+        // Doors (Paneled look)
+        const doorL = new THREE.Mesh(new THREE.BoxGeometry(0.78, 2.0, 0.05), wMainMat);
+        doorL.position.set(-0.395, 2.1, 0.41); this.wardrobe.add(doorL);
+        const doorR = new THREE.Mesh(new THREE.BoxGeometry(0.78, 2.0, 0.05), wMainMat);
+        doorR.position.set(0.395, 2.1, 0.41); this.wardrobe.add(doorR);
+
+        // Lower Drawers
+        const dr1 = new THREE.Mesh(new THREE.BoxGeometry(1.58, 0.45, 0.05), wMainMat);
+        dr1.position.set(0, 0.85, 0.41); this.wardrobe.add(dr1);
+        const dr2 = new THREE.Mesh(new THREE.BoxGeometry(1.58, 0.45, 0.05), wMainMat);
+        dr2.position.set(0, 0.35, 0.41); this.wardrobe.add(dr2);
+
+        // Gold Handles
+        const h1 = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.4), goldMat);
+        h1.rotation.z = Math.PI; h1.position.set(-0.1, 2.15, 0.45); this.wardrobe.add(h1);
+        const h2 = h1.clone(); h2.position.x = 0.1; this.wardrobe.add(h2);
+        const h3 = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.3), goldMat);
+        h3.rotation.z = Math.PI / 2; h3.position.set(0, 0.85, 0.45); this.wardrobe.add(h3);
+        const h4 = h3.clone(); h4.position.y = 0.35; this.wardrobe.add(h4);
+
+        // Clothes Hint (Visible in seams)
+        const c1 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.8, 0.1), new THREE.MeshStandardMaterial({ color: 0x3b82f6 }));
+        c1.position.set(0, 2.1, 0.38); this.wardrobe.add(c1);
+
+        // Legs
+        [[-0.7, 0, 0.3], [0.7, 0, 0.3], [-0.7, 0, -0.3], [0.7, 0, -0.3]].forEach(p => {
+            const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.08, 0.2), wMainMat);
+            leg.position.set(...p); leg.position.y = -0.1; this.wardrobe.add(leg);
+        });
+
+        this.wardrobe.position.set(-7.2, 0.2, 2); this.wardrobe.rotation.y = Math.PI / 2;
+        this.scene.add(this.wardrobe);
+        this.collisionObjects.push({ type: 'soft-box', x: -7.2, z: 2, w: 0.8, d: 1.6, h: 4.0 });
 
         // (this.door Mesh is created and added in loadAssets)
 
-        // Upgraded Modular Rocket (Nose Cone + Body + Thrusters)
+        // Upgraded Modular Rocket (GLB Model with Fallback)
         const rocketGrp = new THREE.Group();
         const rktMat = new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.9, roughness: 0.1 });
 
-        // Main Body: 65.6ft (20m) tall
-        const body = new THREE.Mesh(new THREE.CylinderGeometry(4, 5, 20, 32), rktMat);
-        body.position.y = 10; rocketGrp.add(body);
-
-        // Nose Cone: 26.2ft (8m) tall
+        // Placeholder (shown until GLB loads)
+        const rktBody = new THREE.Mesh(new THREE.CylinderGeometry(4, 5, 20, 32), rktMat);
+        rktBody.position.y = 10; rocketGrp.add(rktBody);
         const nose = new THREE.Mesh(new THREE.ConeGeometry(4, 8, 32), new THREE.MeshStandardMaterial({ color: 0xAA0000, metalness: 0.5 }));
         nose.position.y = 24; rocketGrp.add(nose);
-
-        // Thrusters: 13.1ft (4m) tall
         for (let i = 0; i < 4; i++) {
             const thruster = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 2.5, 4, 16), rktMat);
             const angle = (i / 4) * Math.PI * 2;
             thruster.position.set(Math.cos(angle) * 4, 2, Math.sin(angle) * 4);
-            rocketGrp.add(thruster);
+            thruster.name = 'lobbyThruster'; rocketGrp.add(thruster);
         }
+
+        // Load real GLB rocket
+        const gltfRocket = new GLTFLoader();
+        gltfRocket.load('/assets/models/glb/rocket.glb', (gltf) => {
+            const m = gltf.scene;
+            const box = new THREE.Box3().setFromObject(m);
+            const size = box.getSize(new THREE.Vector3());
+            const s = 28 / size.y; // Scale to ~28 units (lobby scale)
+            m.scale.set(s, s, s);
+            const box2 = new THREE.Box3().setFromObject(m);
+            const center = box2.getCenter(new THREE.Vector3());
+            m.position.set(-center.x, -box2.min.y, -center.z);
+            m.traverse(c => { if (c.isMesh) { c.castShadow = true; } });
+            rocketGrp.add(m);
+            // Hide placeholders
+            rktBody.visible = false; nose.visible = false;
+            rocketGrp.traverse(c => { if (c.name === 'lobbyThruster') c.visible = false; });
+            console.log("✅ Lobby Rocket GLB loaded");
+        });
 
         rocketGrp.position.set(0, 0, -60);
         this.scene.add(rocketGrp);
+
 
         // Engine Glow (Red PointLight)
         this.rocketLight = new THREE.PointLight(0xff0000, 3, 50);
@@ -433,7 +494,10 @@ export class StationStage {
             case 'KeyA': this.input.a = isD; break;
             case 'KeyS': this.input.s = isD; break;
             case 'KeyD': this.input.d = isD; break;
-            case 'Space': this.input.space = isD; break;
+            case 'Space':
+                this.input.space = isD;
+                if (isD) this.tryInteract(); // Trigger interaction on Space
+                break;
             case 'KeyE': if (isD) this.tryInteract(); break;
         }
     }
@@ -460,9 +524,31 @@ export class StationStage {
         this.bed = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.6, 2.4), new THREE.MeshStandardMaterial({ color: 0x2A3B4C }));
         this.bed.position.set(-5, 0.3, -4);
         this.scene.add(this.bed);
-        // Replacement Door Box (SaddleBrown)
-        this.door = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2.2, 0.2), new THREE.MeshStandardMaterial({ color: 0x8B4513 }));
+
+        // --- UPGRADED LOBBY EXIT DOOR (Wood Paneled "AI" style) ---
+        const dGrp = new THREE.Group();
+        const woodMat = new THREE.MeshStandardMaterial({ color: 0xd2b48c, roughness: 0.8 }); // Light Tan Wood
+        const darkWoodMat = new THREE.MeshStandardMaterial({ color: 0x8b4513, roughness: 0.9 }); // Dark Brown Panels
+        const knobMat = new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.9, roughness: 0.1 }); // Black Handle
+
+        // Door Slab
+        const slab = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2.2, 0.15), woodMat);
+        dGrp.add(slab);
+
+        // Panels (Visual representation of the image)
+        const p1 = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.6, 0.05), darkWoodMat);
+        p1.position.set(-0.35, 0.65, 0.08); dGrp.add(p1);
+        const p2 = p1.clone(); p2.position.set(0.35, 0.65, 0.08); dGrp.add(p2);
+        const p3 = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.6, 0.05), darkWoodMat);
+        p3.position.set(0, -0.65, 0.08); dGrp.add(p3);
+
+        // Handle
+        const handle = new THREE.Mesh(new THREE.SphereGeometry(0.04), knobMat);
+        handle.position.set(-0.6, 0, 0.1); dGrp.add(handle);
+
+        this.door = dGrp;
         this.door.position.set(0, 1.1, 5.9);
+        this.door.rotation.y = Math.PI; // FLIP: Face panels toward the player
         this.scene.add(this.door);
 
         // YELLOW BOX KEY
@@ -660,19 +746,22 @@ export class StationStage {
 
         const kPos = new THREE.Vector3(6.5, 1.1, -5);
         const rPos = new THREE.Vector3(6, 1.2, -5);
-        const mP = this.mirror ? this.mirror.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3();
+        const wP = this.wardrobe ? this.wardrobe.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3();
         const dPos = new THREE.Vector3(0, 1.1, 5.9);
 
         if (this.gameState === 0 && this.player.position.distanceTo(rPos) < 2.5) {
-            s = true; pr.innerText = "[E] LISTEN TO RADIO"; t = this.pedestal; offset = 0.8;
-        } else if (this.gameState === 1 && this.player.position.distanceTo(mP) < 2.5) {
+            s = true; pr.innerText = "[SPACE] LISTEN TO RADIO"; t = this.pedestal; offset = 0.8;
+        } else if (this.gameState === 1 && this.player.position.distanceTo(wP) < 2.5) {
             const pF = new THREE.Vector3(0, 0, 1).applyQuaternion(this.player.quaternion);
-            const toM = new THREE.Vector3().subVectors(mP, this.player.position).normalize();
-            if (pF.dot(toM) > 0.5) { s = true; pr.innerText = "[E] GEAR CHECK"; t = this.mirror; offset = 0.8; }
+            const toW = new THREE.Vector3().subVectors(wP, this.player.position).normalize();
+            if (pF.dot(toW) > 0.5) { s = true; pr.innerText = "[SPACE] GEAR CHECK"; t = this.wardrobe; offset = 1.6; }
         } else if (this.gameState === 2 && this.isKeyInteractable && this.player.position.distanceTo(kPos) < 2.5) {
-            s = true; pr.innerText = "[E] PICK UP CAR KEYS"; t = this.key; offset = 0.5;
-        } else if (this.gameState === 3 && this.player.position.distanceTo(dPos) < 2.5) {
-            s = true; pr.innerText = "[E] EVACUATE STATION"; t = this.door; offset = 0.8;
+            s = true; pr.innerText = "[SPACE] PICK UP CAR KEYS"; t = this.key; offset = 0.5;
+        } else if (this.player.position.distanceTo(dPos) < 2.5) {
+            s = true;
+            pr.innerText = this.gameState === 3 ? "[SPACE] EVACUATE STATION" : "[SPACE] ACCESS DOOR";
+            t = this.door;
+            offset = 0.8;
         }
 
         if (pr) {
@@ -692,14 +781,14 @@ export class StationStage {
     }
 
     tryInteract() {
-        const kPos = new THREE.Vector3(6.5, 1.1, -5), rPos = new THREE.Vector3(6, 1.2, -5), mP = this.mirror ? this.mirror.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3(), dPos = new THREE.Vector3(0, 1.1, 5.9);
+        const kPos = new THREE.Vector3(6.5, 1.1, -5), rPos = new THREE.Vector3(6, 1.2, -5), wP = this.wardrobe ? this.wardrobe.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3(), dPos = new THREE.Vector3(0, 1.1, 5.9);
         if (this.gameState === 0 && this.player.position.distanceTo(rPos) < 2.5) {
             this.gameState = 1;
             document.getElementById('objective-text').innerText = "GEAR CHECK REQUIRED";
             document.getElementById('subtask-text').innerText = `- Check the mirror, Pilot ${this.pilotName}.`;
             this.triggerDialogue(1);
-            this.pulseObjective(this.mirror);
-        } else if (this.gameState === 1 && this.player.position.distanceTo(mP) < 2.5) {
+            // PULSE DISABLED BASED ON USER FEEDBACK
+        } else if (this.gameState === 1 && this.player.position.distanceTo(wP) < 2.5) {
             if (this.sounds['chime']) this.sounds['chime'].play();
             this.openOutfitHUD();
         } else if (this.gameState === 2 && this.isKeyInteractable && this.player.position.distanceTo(kPos) < 2.5) {
@@ -707,14 +796,39 @@ export class StationStage {
             if (this.key) this.key.visible = false;
             this.playUISound();
             document.getElementById('objective-text').innerText = "STATION EVACUATION";
-            document.getElementById('subtask-text').innerText = "- Proceed to the Vehicle Bay exit.";
+            document.getElementById('subtask-text').innerText = "- DOOR ACCESSIBLE -";
             this.triggerDialogue(3);
-            this.pulseObjective(this.door);
-        } else if (this.gameState === 3 && this.player.position.distanceTo(dPos) < 2.5) {
+            // PULSE DISABLED BASED ON USER FEEDBACK
+        }
+        else if (this.player.position.distanceTo(dPos) < 2.5) {
+            // Force transition even if keys are missed, but check state
+            if (this.gameState < 3) this.gameState = 3;
+
             this.isTransitioning = true;
+            document.getElementById('interaction-prompt').style.display = 'none';
             document.getElementById('fade-overlay').style.opacity = '1';
-            // PART 2 INTEGRATION: Trigger placeholder
-            if (window.startPart2) window.startPart2();
+
+            // Door Animation: Rotate open
+            if (this.door) {
+                const startRot = this.door.rotation.y;
+                const targetRot = startRot + Math.PI / 2;
+                let startTime = Date.now();
+                const animateDoor = () => {
+                    let elapsed = (Date.now() - startTime) / 1000;
+                    let p = Math.min(elapsed / 0.8, 1.0);
+                    // Cubic easing
+                    let t = 1 - Math.pow(1 - p, 3);
+                    this.door.rotation.y = startRot + (targetRot - startRot) * t;
+                    if (p < 1.0) requestAnimationFrame(animateDoor);
+                };
+                animateDoor();
+            }
+
+            setTimeout(() => {
+                if (this.gameStateManager) {
+                    this.gameStateManager.transitionTo('LAUNCH_CENTER');
+                }
+            }, 1200);
         }
     }
 
@@ -753,5 +867,43 @@ export class StationStage {
                 c.position.x = 0; c.position.z = 0;
             }
         });
+    }
+
+    cleanup() {
+        console.log("Cleaning up StationStage...");
+
+        // Remove UI elements
+        const taskPanel = document.getElementById('task-panel');
+        if (taskPanel) taskPanel.style.display = 'none';
+        const movementHud = document.getElementById('movement-hud');
+        if (movementHud) movementHud.style.display = 'none';
+        const dialogueBox = document.getElementById('dialogue-box');
+        if (dialogueBox) dialogueBox.style.display = 'none';
+
+        // Clear scene
+        while (this.scene.children.length > 0) {
+            this.scene.remove(this.scene.children[0]);
+        }
+
+        // Dispose geometries and materials
+        this.scene.traverse((object) => {
+            if (object.geometry) object.geometry.dispose();
+            if (object.material) {
+                if (Array.isArray(object.material)) {
+                    object.material.forEach(mat => mat.dispose());
+                } else {
+                    object.material.dispose();
+                }
+            }
+        });
+
+        // Reset inputs
+        this.input = { w: false, a: false, s: false, d: false, space: false };
+
+        // Disable controls
+        if (this.controls) {
+            this.controls.dispose();
+            this.controls = null;
+        }
     }
 }

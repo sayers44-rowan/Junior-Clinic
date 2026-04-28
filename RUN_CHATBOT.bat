@@ -17,8 +17,7 @@ timeout /t 5 /nobreak > nul
 
 :: Start Frontend
 echo Launching Frontend (The Interface)...
-:: Using full path to next binary to be safe
-start "Chatbot Frontend" /D "%ROOT_DIR%\frontend" cmd /k ".\node_modules\.bin\next.cmd dev -p 3030"
+start "Chatbot Frontend" /D "%ROOT_DIR%" cmd /k "npm run dev -- --port 3001"
 
 echo.
 echo ==========================================

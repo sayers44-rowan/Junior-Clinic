@@ -58,9 +58,14 @@ class LLMClient:
             print(f"DEBUG: Resilience Bridge Error: {str(e)}")
             yield f"CRITICAL_ERROR: {str(e)}"
 
-    def stream_completion(self, model: str, messages: list, temperature: float = 1.0, top_p: float = 0.95, max_tokens: int = 8192):
+    def stream_completion(self, model: str, messages: list, temperature: float = 1.0, top_p: float = 0.95, max_tokens: int = 8192, player_context: dict = None):
         print(f"DEBUG: Starting stream for model {model}")
         
+        # Inject player context into system prompt if provided
+        if player_context and messages and messages[0]["role"] == "system":
+            ctx_str = f"\n\nPLAYER CONTEXT:\n- Username: {player_context.get('username')}\n- Current Stage: {player_context.get('current_stage')}\n- Outfit: {player_context.get('outfit_color')}"
+            messages[0]["content"] += ctx_str
+
         # Try primary OpenAI client first
         try:
             # We use a short timeout for the initial connection to detect hangs

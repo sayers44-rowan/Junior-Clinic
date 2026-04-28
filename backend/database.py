@@ -16,6 +16,16 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
 
+class Player(Base):
+    __tablename__ = "players"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    current_stage = Column(String, default="LOBBY")
+    outfit_color = Column(String, default="default")
+    player_data = Column(Text, default="{}") # JSON blob for inventory, coordinates, etc.
+    last_updated = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 class Conversation(Base):
     __tablename__ = "conversations"
 
