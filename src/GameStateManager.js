@@ -1,6 +1,10 @@
 import * as THREE from 'three';
 import { GameStage, globalManager } from './GameStage.js';
 
+export const STATE_DRIVING = 'STATE_DRIVING';
+export const STATE_ARRIVING = 'STATE_ARRIVING';
+export const STATE_EXPLORING = 'STATE_EXPLORING';
+
 export class GameStateManager {
     constructor(scene, camera, renderer) {
         this.scene = scene;
@@ -8,6 +12,7 @@ export class GameStateManager {
         this.renderer = renderer;
         this.currentStage = null;
         this.started = false;
+        this.currentState = STATE_DRIVING;
 
         // PRELOADER: Hook into the global loading manager from GameStage
         globalManager.onLoad = () => {
@@ -18,7 +23,7 @@ export class GameStateManager {
         };
 
         // Instantiate GameStage — it reads selectedPilot from localStorage internally
-        this.currentStage = new GameStage(scene, camera, renderer);
+        this.currentStage = new GameStage(scene, camera, renderer, this);
     }
 
     start() {
@@ -37,9 +42,16 @@ export class GameStateManager {
         if (callsign) callsign.textContent = playerName.toUpperCase();
     }
 
+    setState(newState) {
+        this.currentState = newState;
+        if (this.currentStage && this.currentStage.onStateChange) {
+            this.currentStage.onStateChange(newState);
+        }
+    }
+
     update(delta) {
         if (this.started && this.currentStage) {
-            this.currentStage.update(delta);
+            this.currentStage.update(delta, this.currentState);
         }
     }
 }

@@ -3,7 +3,6 @@ import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import GUI from 'three/examples/jsm/libs/lil\x2Dgui.module.min.js'
 
 import pilotTimmyUrl from '../assets/models/pilot_timmy.fbx?url'
 import pilotAmiUrl from '../assets/models/pilot_ami.fbx?url'
@@ -51,7 +50,7 @@ Object.values(portraitUrls).forEach(url => { const i = new Image(); i.src = url 
 
 const N = x => x * ~0
 
-let scene, camera, renderer, roomModel, skyboxModel, vanModel, rocketModel, gui, dustParticles, singleBirdModel, flockModel, orbitControls
+let scene, camera, renderer, roomModel, skyboxModel, vanModel, rocketModel, dustParticles, singleBirdModel, flockModel, orbitControls
 let audioListener, engineAudioBuffer, ambientAudio, startAudioBuffer, titleAudio
 let gpsVoiceBuffer, tickBuffer, deadboltBuffer, cawBuffer, flapBuffer, chooseVoiceBuffer;
 let lastBirdClick = 0;
@@ -212,7 +211,6 @@ const settings = {
         carSettings.truck.trailOpacity = 0.08
         carSettings.truck.trailColor = '#5c5c5c'
 
-        if (gui) gui.controllersRecursive().forEach(c => c.updateDisplay())
     },
     resetCamera: () => {
         if (camera && orbitControls) {
@@ -320,6 +318,14 @@ styleSheet.innerText = `
         transform: translateX(-50%) scale(0.85)\x3B
         transform-origin: bottom center\x3B
     }
+    .music_toggle { 
+        position: fixed\x3B top: 20px\x3B right: 20px\x3B width: 45px\x3B height: 45px\x3B 
+        background: rgba(0,0,0,0.6)\x3B border: 2px solid rgba(255,255,255,0.8)\x3B 
+        border-radius: 50%\x3B display: flex\x3B align-items: center\x3B justify-content: center\x3B 
+        cursor: pointer\x3B z-index: 100000\x3B color: #fff\x3B font-size: 1.4rem\x3B 
+        transition: all 0.2s ease\x3B backdrop-filter: blur(4px)\x3B pointer-events: auto\x3B
+    }
+    .music_toggle:hover { transform: scale(1.1)\x3B background: rgba(255,119,0,0.4)\x3B border-color: #ff7700\x3B }
 
 `
 document.head.appendChild(styleSheet)
@@ -1080,6 +1086,26 @@ function spawnCar(curve, modelId, speedSetting, startProgress) {
 export function initPreview(container) {
     if (!document.getElementById("sparc_master_loading_screen")) { document.body.appendChild(fadeUI) }
 
+    const musicBtn = document.createElement('div');
+    musicBtn.id = 'sparc_music_toggle';
+    musicBtn.className = 'music_toggle';
+    musicBtn.innerHTML = '🔊';
+    
+    musicBtn.onclick = (e) => {
+        e.stopPropagation();
+        if (!titleAudio || !titleAudio.buffer) return;
+        if (titleAudio.isPlaying) {
+            titleAudio.pause();
+            musicBtn.innerHTML = '🔇';
+            musicBtn.style.borderColor = 'rgba(255,255,255,0.3)';
+        } else {
+            titleAudio.play();
+            musicBtn.innerHTML = '🔊';
+            musicBtn.style.borderColor = 'rgba(255,255,255,0.8)';
+        }
+    };
+    document.body.appendChild(musicBtn);
+
     previewContainer = container
     loadStartTime = performance.now()
 
@@ -1174,62 +1200,6 @@ export function initPreview(container) {
     ].map(p => new THREE.Vector3(p[0], p[1], p[2]))
     curves.rtol = new THREE.CatmullRomCurve3(RT)
 
-    gui = new GUI({ title: 'God Mode Tools' })
-
-    gui.add(settings, 'mouseMode', ['Camera Orbit', 'Rotate Character']).name('Left Click Action').onChange(v => {
-        if (orbitControls) orbitControls.enabled = (v === 'Camera Orbit' && !settings.loggerEnabled)
-    })
-
-    const camFolder = gui.addFolder('Camera Setup (Live Values)')
-    camFolder.add(settings, 'resetCamera').name('Reset Camera')
-    camFolder.add(settings, 'camDistance').name('Cam Distance (Zoom)').listen().disable()
-    camFolder.add(settings, 'camX').name('Cam X').listen().disable()
-    camFolder.add(settings, 'camY').name('Cam Y').listen().disable()
-    camFolder.add(settings, 'camZ').name('Cam Z').listen().disable()
-    camFolder.add(settings, 'targetX').name('Target X').listen().disable()
-    camFolder.add(settings, 'targetY').name('Target Y').listen().disable()
-    camFolder.add(settings, 'targetZ').name('Target Z').listen().disable()
-
-    const mapFolder = gui.addFolder('Map Transform')
-    mapFolder.add(settings, 'mapX', N(500), 500, 0.1).name('Map X')
-    mapFolder.add(settings, 'mapY', N(10), 10, 0.01).name('Map Y')
-    mapFolder.add(settings, 'mapZ', N(2000), 2000, 0.1).name('Map Z')
-    mapFolder.add(settings, 'mapRot', N(Math.PI), Math.PI, 0.01).name('Map Rotation')
-    mapFolder.add(settings, 'mapScale', 0.1, 10, 0.01).name('Map Scale')
-
-    const charFolder = gui.addFolder('Character Controls')
-    charFolder.add(settings, 'charRotation', N(Math.PI), Math.PI).name('Model Rotation').listen()
-    charFolder.add(settings, 'charYOffset', N(1), 1, 0.01).name('Model Height (Y)').listen()
-
-    const trafficFolder = gui.addFolder('Traffic Tuning')
-    trafficFolder.add(settings, 'resetTraffic').name('Reset Traffic & Cars')
-    trafficFolder.add(settings, 'leftSpeed', 0, 0.5, 0.001).name('Left Speed').listen()
-    trafficFolder.add(settings, 'rightSpeed', 0, 0.5, 0.001).name('Right Speed').listen()
-    trafficFolder.add(settings, 'switchSpeed', 0, 0.5, 0.001).name('Switch Speed').listen()
-
-    const carTuningFolder = gui.addFolder('Car Tuning (Live)')
-    const carList = ['jeep', 'suvy', 'truck']
-    let loopIdx = 0
-    while (loopIdx < carList.length) {
-        const id = carList[loopIdx]
-        const f = carTuningFolder.addFolder(id.toUpperCase())
-        f.add(carSettings[id], 'scale', 0.01, 5.0, 0.01).name('Scale').listen()
-        f.add(carSettings[id], 'rotY', N(Math.PI), Math.PI, 0.01).name('Rot Y (Yaw)').listen()
-        f.add(carSettings[id], 'offsetX', N(5), 5, 0.01).name('Offset X (Left/Right)').listen()
-        f.add(carSettings[id], 'offsetY', N(5), 5, 0.01).name('Offset Y (Up/Down)').listen()
-        f.add(carSettings[id], 'offsetZ', N(5), 5, 0.01).name('Offset Z (Fwd/Back)').listen()
-        f.add(carSettings[id], 'trailZ', N(10), 10, 0.1).name('Dust Z (Front/Back)').listen()
-        f.add(carSettings[id], 'trailY', N(2), 5, 0.1).name('Dust Y (Height)').listen()
-        f.add(carSettings[id], 'wheelWidth', 0.1, 5, 0.1).name('Wheel Width').listen()
-        f.add(carSettings[id], 'trailSpread', 0, 5, 0.1).name('Dust Spread').listen()
-        f.add(carSettings[id], 'trailSize', 0.1, 5, 0.1).name('Particle Size').listen()
-        f.add(carSettings[id], 'trailLifetime', 0.1, 5, 0.1).name('Lifetime').listen()
-        f.add(carSettings[id], 'trailCount', 0, MAX_TRAIL_PARTICLES, 1).name('Dust Count').listen()
-        f.add(carSettings[id], 'trailOpacity', 0, 1, 0.01).name('Opacity').listen()
-        f.addColor(carSettings[id], 'trailColor').name('Color').listen()
-        loopIdx += 1
-    }
-
     const ambientLight = new THREE.AmbientLight(0xffeedd, settings.ambientInt)
     scene.add(ambientLight)
 
@@ -1247,84 +1217,6 @@ export function initPreview(container) {
     sunLight.shadow.bias = N(0.0005)
     scene.add(sunLight)
 
-    const lightFolder = gui.addFolder('Lighting Tweaks')
-    lightFolder.add(settings, 'activePreset', Object.keys(lightingPresets)).name('Preset').onChange(presetName => {
-        if (presetName !== 'Custom') {
-            const p = lightingPresets[presetName]
-            settings.ambientInt = p.ambientInt
-            settings.sunInt = p.sunInt
-            settings.sunX = p.sunX
-            settings.sunY = p.sunY
-            settings.sunZ = p.sunZ
-
-            ambientLight.intensity = p.ambientInt
-            sunLight.intensity = p.sunInt
-            sunLight.position.set(p.sunX, p.sunY, p.sunZ)
-        }
-    })
-
-    lightFolder.add(settings, 'ambientInt', 0, 5).name('Ambient Power').listen().onChange(v => { ambientLight.intensity = v })
-    lightFolder.add(settings, 'sunInt', 0, 10).name('Sun Power').listen().onChange(v => { sunLight.intensity = v })
-    lightFolder.add(settings, 'sunX', N(50), 50).name('Sun X').listen().onChange(v => { sunLight.position.x = v })
-    lightFolder.add(settings, 'sunY', N(50), 50).name('Sun Y').listen().onChange(v => { sunLight.position.y = v })
-    lightFolder.add(settings, 'sunZ', N(50), 50).name('Sun Z').listen().onChange(v => { sunLight.position.z = v })
-
-    const skyFolder = gui.addFolder('Skybox Tuning')
-    skyFolder.add(settings, 'skyIntensity', 0, 2, 0.01).name('Sky Brightness').onChange(v => {
-        skyMaterials.forEach(m => m.emissiveIntensity = v)
-    })
-    skyFolder.addColor(settings, 'skyTint').name('Sky Tint').onChange(v => {
-        skyMaterials.forEach(m => m.emissive.set(v))
-    })
-
-    const vfxFolder = gui.addFolder('VFX Tuning')
-    vfxFolder.add(settings, 'dustCount', 0, MAX_DUST, 1).name('Dust Count').onChange(v => {
-        if (dustParticles) dustParticles.geometry.setDrawRange(0, v)
-    })
-    vfxFolder.add(settings, 'dustSize', 0.01, 1.0, 0.01).name('Dust Size').onChange(v => {
-        if (dustParticles) dustParticles.material.uniforms.size.value = v * 100.0
-    })
-    vfxFolder.add(settings, 'dustOpacity', 0.0, 1.0, 0.01).name('Dust Opacity').onChange(v => {
-        if (dustParticles) dustParticles.material.uniforms.globalOpacity.value = v
-    })
-    vfxFolder.add(settings, 'dustMaxHeight', 1, 50, 0.5).name('Dust Max Height')
-    vfxFolder.add(settings, 'dustSpeed', 0.0, 5.0, 0.1).name('Dust Speed')
-
-    const birdFolder = gui.addFolder('Singular Bird Tuning')
-    birdFolder.add(settings, 'birdX', N(10), 10, 0.01).onChange(v => { if (singleBirdModel) singleBirdModel.position.x = v })
-    birdFolder.add(settings, 'birdY', N(5), 10, 0.01).onChange(v => { if (singleBirdModel) singleBirdModel.position.y = v })
-    birdFolder.add(settings, 'birdZ', N(10), 10, 0.01).onChange(v => { if (singleBirdModel) singleBirdModel.position.z = v })
-    birdFolder.add(settings, 'birdRot', N(Math.PI), Math.PI, 0.01).onChange(v => { if (singleBirdModel) singleBirdModel.rotation.y = v })
-    birdFolder.add(settings, 'birdScale', 0.1, 5, 0.01).onChange(v => { if (singleBirdModel) singleBirdModel.scale.set(v, v, v) })
-
-    const flockFolder = gui.addFolder('Flock Tuning')
-    flockFolder.add(settings, 'flockX', N(500), 500, 0.1).onChange(v => { if (flockModel) flockModel.position.x = v })
-    flockFolder.add(settings, 'flockY', N(10), 150, 0.1).onChange(v => { if (flockModel) flockModel.position.y = v })
-    flockFolder.add(settings, 'flockZ', N(500), 500, 0.1).onChange(v => { if (flockModel) flockModel.position.z = v })
-    flockFolder.add(settings, 'flockRot', N(Math.PI), Math.PI, 0.01).onChange(v => { if (flockModel) flockModel.rotation.y = v })
-    flockFolder.add(settings, 'flockScale', 0.01, 5, 0.01).onChange(v => { if (flockModel) flockModel.scale.set(v, v, v) })
-    flockFolder.add(settings, 'flockSpeed', 0, 100, 0.1).name('Flock Z Speed')
-
-    const uiFolder = gui.addFolder('UI Transform')
-    uiFolder.add(settings, 'uiOffsetX', -500, 500, 1).name('X Offset').onChange(v => { const w = document.getElementById('sparc_carousel_master'); if (w) w.style.transform = `translateX(calc(-50% + ${v}px)) scale(${settings.uiScale})` })
-    uiFolder.add(settings, 'uiOffsetY', -200, 500, 1).name('Y Offset').onChange(v => { const w = document.getElementById('sparc_carousel_master'); if (w) w.style.bottom = v + 'px' })
-    uiFolder.add(settings, 'uiScale', 0.5, 2.0, 0.01).name('Scale').onChange(v => { const w = document.getElementById('sparc_carousel_master'); if (w) w.style.transform = `translateX(calc(-50% + ${settings.uiOffsetX}px)) scale(${v})` })
-
-    const rocketFolder = gui.addFolder('Rocket Tuning')
-    rocketFolder.add(settings, 'rocketX', N(500), 500, 0.1).name('Pos X').onChange(v => { if (rocketModel) rocketModel.position.x = v })
-    rocketFolder.add(settings, 'rocketY', N(100), 500, 0.1).name('Pos Y').onChange(v => { if (rocketModel) rocketModel.position.y = v })
-    rocketFolder.add(settings, 'rocketZ', N(500), 500, 0.1).name('Pos Z').onChange(v => { if (rocketModel) rocketModel.position.z = v })
-    rocketFolder.add(settings, 'rocketRotX', N(Math.PI), Math.PI, 0.01).name('Rot X').onChange(v => { if (rocketModel) rocketModel.rotation.x = v })
-    rocketFolder.add(settings, 'rocketRotY', N(Math.PI), Math.PI, 0.01).name('Rot Y').onChange(v => { if (rocketModel) rocketModel.rotation.y = v })
-    rocketFolder.add(settings, 'rocketRotZ', N(Math.PI), Math.PI, 0.01).name('Rot Z').onChange(v => { if (rocketModel) rocketModel.rotation.z = v })
-    rocketFolder.add(settings, 'rocketScale', 0.01, 100, 0.01).name('Scale').onChange(v => { if (rocketModel) rocketModel.scale.set(v, v, v) })
-
-    const loggerFolder = gui.addFolder('Track Logger (Spline Tool)')
-    loggerFolder.add(settings, 'loggerEnabled').name('Enable Logger').onChange(v => {
-        if (orbitControls) orbitControls.enabled = (v === 'Camera Orbit' && !settings.loggerEnabled)
-    })
-    loggerFolder.add(settings, 'clearPath').name('Clear Path')
-    loggerFolder.add(settings, 'printPath').name('Print Path to Console')
 
     THREE.DefaultLoadingManager.onLoad = function () {
         isEngineLoaded = true
@@ -1374,14 +1266,6 @@ export function initPreview(container) {
             singleBirdModel.userData.clips = gltf.animations
             envMixers.push(mixer)
 
-            const animOptions = {}
-            gltf.animations.forEach((a, i) => { animOptions[`Animation ${i}`] = i })
-
-            birdFolder.add(settings, 'birdAnimIndex', animOptions).name('Select Animation').onChange(idx => {
-                currentBirdAction.stop()
-                currentBirdAction = mixer.clipAction(gltf.animations[idx])
-                currentBirdAction.play()
-            })
         }
         scene.add(singleBirdModel)
     })
@@ -1645,7 +1529,14 @@ function animate() {
             document.removeEventListener('mousedown', unlockEngine);
             document.removeEventListener('keydown', unlockEngine);
             if (audioListener.context.state === 'suspended') audioListener.context.resume();
-            if (titleAudio && !titleAudio.isPlaying) titleAudio.play();
+            if (titleAudio && !titleAudio.isPlaying) {
+                titleAudio.play();
+                const mBtn = document.getElementById('sparc_music_toggle');
+                if (mBtn) {
+                    mBtn.innerHTML = '🔊';
+                    mBtn.style.borderColor = 'rgba(255,255,255,0.8)';
+                }
+            }
 
             const iris = document.createElement('div');
             iris.id = 'sparc_intro_iris';

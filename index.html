@@ -9,7 +9,7 @@
         body {
             margin: 0;
             overflow: hidden;
-            background-color: #e8d4b4;
+            background-color: #87CEEB;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -32,7 +32,7 @@
             animation: float 6s ease-in-out infinite;
             z-index: 10;
             position: relative;
-            margin-top: -15vh;
+            margin-top: -32vh;
         }
 
         #logo {
@@ -57,7 +57,10 @@
         }
 
         .menu-container {
-            margin-top: -10%;
+            position: fixed;
+            bottom: 9vh;
+            left: 50%;
+            transform: translateX(-50%);
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -82,7 +85,7 @@
         .menu-btn:hover {
             color: #fff;
             letter-spacing: 16px;
-            text-shadow: 0 0 15px rgba(255, 0, 0, 0.8);
+            text-shadow: 0 0 15px rgba(255, 119, 0, 0.8);
             transform: scale(1.05);
         }
 
@@ -111,15 +114,15 @@
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
-        const rocketUrl = './assets/models/rocket_low_poly.glb?url';
+        const engineUrl = './assets/audio/engine.mp3?url';
         const skyboxUrl = './assets/models/skybox_skydays_3.glb?url';
         const vanUrl = './assets/models/van.glb?url';
         const cactusUrl = './assets/models/low_poly_cactus.glb?url';
         const rockSetUrl = './assets/models/low_poly_rock_set.glb?url';
 
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color('#e8d4b4');
-        scene.fog = new THREE.Fog('#e8d4b4', 5, 140);
+        scene.background = new THREE.Color('#87CEEB');
+        scene.fog = new THREE.Fog('#87CEEB', 20, 350);
 
         const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
         camera.position.set(0, 4, 12);
@@ -128,6 +131,20 @@
         const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('bg-canvas'), antialias: false });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(1);
+
+        const audioListener = new THREE.AudioListener();
+        camera.add(audioListener);
+        const engineAudio = new THREE.Audio(audioListener);
+        const audioLoader = new THREE.AudioLoader();
+        audioLoader.load(engineUrl, (buffer) => {
+            engineAudio.setBuffer(buffer);
+            engineAudio.setLoop(true);
+            engineAudio.setVolume(0.02);
+        });
+        window.addEventListener('mousedown', () => {
+            if (audioListener.context.state === 'suspended') audioListener.context.resume();
+            if (!engineAudio.isPlaying && engineAudio.buffer) engineAudio.play();
+        }, { once: true });
 
         scene.add(new THREE.AmbientLight(0xffeedd, 2.5));
         const sun = new THREE.DirectionalLight(0xfffaeb, 1.5);
@@ -167,19 +184,11 @@
             activeVan = gltf.scene;
             activeVan.position.set(0, 0, -5);
             activeVan.scale.set(1.5, 1.5, 1.5);
-            activeVan.rotation.y = Math.PI / 2; // Facing away from camera
+            activeVan.rotation.y = -Math.PI / 2; // Facing away
             scene.add(activeVan);
         });
 
-        // 4. Rocket
-        loader.load(rocketUrl, (gltf) => {
-            const r = gltf.scene;
-            r.position.set(0, 0, -130);
-            r.scale.set(45, 45, 45);
-            scene.add(r);
-        });
-
-        // 5. Props
+        // 4. Props
         const props = [];
         const spawnGroup = (url, scale, yOffset) => {
             loader.load(url, (gltf) => {
@@ -194,10 +203,10 @@
                 }
             });
         };
-        spawnGroup(cactusUrl, 1.2, -4.5); // Buried pots
+        spawnGroup(cactusUrl, 1.2, -4.5);
         spawnGroup(rockSetUrl, 0.6, -0.5);
 
-        // 6. Dust System
+        // 5. Dust System
         const dustCount = 350;
         const dustGeo = new THREE.BufferGeometry();
         const dustPos = new Float32Array(dustCount * 3);
@@ -239,7 +248,7 @@
         }
         animate();
 
-        // 7. Transition
+        // 6. Transition
         document.getElementById('start-btn').addEventListener('click', () => {
             const iris = document.createElement('div');
             iris.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:250vmax;height:250vmax;border-radius:50%;box-shadow:0 0 0 300vmax #000;z-index:9999;transition:width 0.8s ease-in, height 0.8s ease-in;';
